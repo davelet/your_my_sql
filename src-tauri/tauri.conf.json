@@ -16,9 +16,8 @@
         "title": "you_my_sql",
         "width": 960,
         "height": 600,
-        "x": 0,
-        "y": 0,
-        "visible": false
+        "center": true,
+        "visible": true
       }
     ],
     "security": {
