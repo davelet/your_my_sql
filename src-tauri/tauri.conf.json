@@ -1,8 +1,8 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "you_my_sql",
+  "$schema": "https://schema.tauri.app/config/2.5.1",
+  "productName": "YOU MySql",
   "version": "0.1.0",
-  "identifier": "com.you_my_sql.app",
+  "identifier": "com.davelet.you-my-sql.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,13 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "you_my_sql",
-        "width": 800,
-        "height": 600
+        "width": 960,
+        "height": 600,
+        "x": 0,
+        "y": 0,
+        "visible": false
       }
     ],
     "security": {
