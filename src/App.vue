@@ -1,31 +1,49 @@
-<script setup>
-import { ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+<script setup lang="ts">
+import { ref } from 'vue';
+import { useDbStore } from './stores/db';
+import ConnectionForm from './components/ConnectionForm.vue';
+import DatabaseExplorer from './components/DatabaseExplorer.vue';
+import SqlEditor from './components/SqlEditor.vue';
 
-const greetMsg = ref('')
-const name = ref('')
+const dbStore = useDbStore();
+const activeTab = ref('explorer');
+const showConnectionDialog = ref(false);
 
-async function greet() {
-  greetMsg.value = await invoke('greet', { name: name.value })
-}
+const handleConnected = () => {
+  showConnectionDialog.value = false;
+};
 </script>
 
 <template>
-  <div class="container">
-    <h1>Welcome to Tauri + Vue</h1>
-
-    <p>Click on the Tauri, Vite, and Vue logos to learn more.</p>
-
-    <form class="row" @submit.prevent="greet">
-      <input
-        id="greet-input"
-        v-model="name"
-        placeholder="Enter a name..."
-      />
-      <button type="submit">Greet</button>
-    </form>
-
-    <p>{{ greetMsg }}</p>
+  <div class="app-container">
+    <header class="app-header">
+      <h1>You My SQL</h1>
+      <div class="header-actions">
+        <el-button type="primary" @click="showConnectionDialog = true">
+          New Connection
+        </el-button>
+      </div>
+    </header>
+    
+    <main class="app-content">
+      <el-tabs v-model="activeTab" class="main-tabs">
+        <el-tab-pane label="Database Explorer" name="explorer">
+          <DatabaseExplorer />
+        </el-tab-pane>
+        
+        <el-tab-pane label="SQL Editor" name="editor">
+          <SqlEditor />
+        </el-tab-pane>
+      </el-tabs>
+    </main>
+    
+    <el-dialog
+      v-model="showConnectionDialog"
+      title="New Database Connection"
+      width="600px"
+    >
+      <ConnectionForm @connected="handleConnected" />
+    </el-dialog>
   </div>
 </template>
 
@@ -46,84 +64,68 @@ async function greet() {
   -webkit-text-size-adjust: 100%;
 }
 
-.container {
+body {
   margin: 0;
-  padding-top: 10vh;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.app-container {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  text-align: center;
+  height: 100%;
+  width: 100%;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  height: 60px;
+  background-color: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 10;
 }
 
-a:hover {
-  color: #535bf2;
+.app-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
 }
 
-h1 {
-  text-align: center;
+.header-actions {
+  display: flex;
+  gap: 10px;
 }
 
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
+.app-content {
+  flex: 1;
+  overflow: hidden;
 }
 
-button {
-  cursor: pointer;
+.main-tabs {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
+.main-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  overflow: hidden;
+  padding: 0;
+  height: calc(100% - 40px);
 }
 
-#greet-input {
-  margin-right: 5px;
+.main-tabs :deep(.el-tab-pane) {
+  height: 100%;
+  overflow: hidden;
 }
-
-
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
-
 </style>
