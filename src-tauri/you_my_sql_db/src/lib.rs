@@ -1,6 +1,5 @@
 use mysql::{prelude::*, Opts, OptsBuilder, Pool, PooledConn, Row, Value};  
-use r2d2::PooledConnection;
-use r2d2_mysql::mysql::Conn;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -9,7 +8,11 @@ use thiserror::Error;
 // Re-export the CONNECTION_MANAGER for use in other modules
 pub use lazy_static::lazy_static;
 
-#[derive(Debug, Error)]
+lazy_static! {
+    pub static ref CONNECTION_MANAGER: Arc<Mutex<ConnectionManager>> = Arc::new(Mutex::new(ConnectionManager::new()));
+}
+
+#[derive(Debug, Error, Serialize, Deserialize)] // Added Serialize, Deserialize for DbError
 pub enum DbError {
     #[error("Connection error: {0}")]
     ConnectionError(String),
@@ -77,7 +80,7 @@ impl ConnectionManager {
         Ok(())
     }
     
-    pub fn get_connection(&self, id: &str) -> Result<PooledConn, DbError> {
+    pub fn get_connection(&self, id: &str) -> Result<mysql::PooledConn, DbError> {
         let pool = self.connections.get(id)
             .ok_or_else(|| DbError::NoConnection(id.to_string()))?;
             
@@ -120,7 +123,7 @@ impl ConnectionManager {
             })
         } else {
             // For non-SELECT queries (INSERT, UPDATE, DELETE, etc.)
-            let result = conn.query_drop(query)
+            conn.query_drop(query) // Changed from query_iter to query_drop for non-select
                 .map_err(|e| DbError::QueryError(e.to_string()))?;
                 
             Ok(QueryResult {
@@ -166,6 +169,7 @@ impl ConnectionManager {
             .map_err(|e| DbError::QueryError(e.to_string()))?;
             
         let query = format!("SELECT * FROM {} LIMIT {}", table, limit);
+        // Call execute_query on self, not a new ConnectionManager instance
         self.execute_query(conn_id, &query)
     }
     
@@ -197,35 +201,13 @@ fn mysql_value_to_json(value: &Value) -> serde_json::Value {
                 serde_json::Value::String(i.to_string())
             }
         },
-        Value::Float(f) => {
-            // Convert f32 to serde_json::Number
-            match serde_json::Number::from_f64(*f as f64) {
-                Some(n) => serde_json::Value::Number(n),
-                None => serde_json::Value::String(f.to_string()),
-            }
+        Value::Float(f) => serde_json::Number::from_f64(*f as f64).map_or(serde_json::Value::Null, serde_json::Value::Number),
+        Value::Double(d) => serde_json::Number::from_f64(*d).map_or(serde_json::Value::Null, serde_json::Value::Number),
+        Value::Date(year, month, day, hour, min, sec, micro) => {
+            serde_json::Value::String(format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}", year, month, day, hour, min, sec, micro))
         },
-        Value::Double(d) => {
-            // Convert f64 to serde_json::Number
-            match serde_json::Number::from_f64(*d) {
-                Some(n) => serde_json::Value::Number(n),
-                None => serde_json::Value::String(d.to_string()),
-            }
+        Value::Time(neg, days, hour, min, sec, micro) => {
+            serde_json::Value::String(format!("{}{:02}:{:02}:{:02}.{:06}{}", if *neg { "-" } else { "" }, days * 24 + (*hour as u32), min, sec, micro, if *days != 0 { format!(" ({} days)", days)} else {"".to_string()}))
         },
-        Value::Date(year, month, day, hour, min, sec, _micro) => {
-            serde_json::Value::String(format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", 
-                                              year, month, day, hour, min, sec))
-        },
-        Value::Time(neg, _days, hours, minutes, seconds, micros) => {
-            let sign = if *neg { "-" } else { "" };
-            serde_json::Value::String(format!("{}{:02}:{:02}:{:02}.{:06}", 
-                                              sign, hours, minutes, seconds, micros))
-        }
     }
-}
-
-// Lazy static for global connection manager
-lazy_static::lazy_static! {
-    pub static ref CONNECTION_MANAGER: Arc<Mutex<ConnectionManager>> = {
-        Arc::new(Mutex::new(ConnectionManager::new()))
-    };
 }

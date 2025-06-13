@@ -6065,6 +6065,28 @@ dependencies = [
  "tauri-plugin-opener",
  "thiserror 1.0.69",
  "toml",
+ "you_my_sql_config",
+ "you_my_sql_db",
+]
+
+[[package]]
+name = "you_my_sql_config"
+version = "0.1.0"
+dependencies = [
+ "dirs 5.0.1",
+ "serde",
+ "toml",
+]
+
+[[package]]
+name = "you_my_sql_db"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "mysql",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
