@@ -1,8 +1,8 @@
 [package]
 name = "you_my_sql"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "You are my SQL"
+authors = ["davelet"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-fs = "2.0.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 image = "0.24"
@@ -29,4 +30,6 @@ r2d2_mysql = "24.0.0"
 thiserror = "1.0.50"
 dotenv = "0.15.0"
 lazy_static = "1.4.0"
+toml = "0.8.0"
+dirs = "5.0.1"
 

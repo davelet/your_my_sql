@@ -1,6 +1,8 @@
 mod db;
+mod config;
 
 use db::{CONNECTION_MANAGER, ConnectionConfig, DbError, QueryResult};
+use config::{AppConfig, read_config, write_config};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -112,10 +114,27 @@ async fn close_connection(conn_id: String) -> CommandResponse<()> {
     }
 }
 
+#[tauri::command]
+async fn get_app_config() -> CommandResponse<AppConfig> {
+    match read_config() {
+        Ok(config) => CommandResponse::success(config),
+        Err(e) => CommandResponse::error(e),
+    }
+}
+
+#[tauri::command]
+async fn save_app_config(config: AppConfig) -> CommandResponse<()> {
+    match write_config(&config) {
+        Ok(_) => CommandResponse::success(()),
+        Err(e) => CommandResponse::error(e),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             connect_to_database,
@@ -123,7 +142,9 @@ pub fn run() {
             list_databases,
             list_tables,
             get_table_data,
-            close_connection
+            close_connection,
+            get_app_config,
+            save_app_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

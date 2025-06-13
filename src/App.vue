@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useDbStore } from './stores/db';
 import ConnectionForm from './components/ConnectionForm.vue';
 import DatabaseExplorer from './components/DatabaseExplorer.vue';
 import SqlEditor from './components/SqlEditor.vue';
+import ConfigSettings from './components/ConfigSettings.vue';
 
-const dbStore = useDbStore();
 const activeTab = ref('explorer');
 const showConnectionDialog = ref(false);
 
@@ -33,6 +32,10 @@ const handleConnected = () => {
         
         <el-tab-pane label="SQL Editor" name="editor">
           <SqlEditor />
+        </el-tab-pane>
+
+        <el-tab-pane label="Settings" name="settings">
+          <ConfigSettings />
         </el-tab-pane>
       </el-tabs>
     </main>

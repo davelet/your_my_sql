@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed } from 'vue';
 import { useDbStore } from '../stores/db';
 import { ElMessage } from 'element-plus';
 import { Codemirror } from 'vue-codemirror';
