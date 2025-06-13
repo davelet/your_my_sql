@@ -230,9 +230,6 @@ export const useDbStore = defineStore('db', {
           this.selectedTable = null;
           this.tableData = null;
         }
-        
-        // Save the updated connections list to config
-        await this.saveConnectionsToConfig();
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
       } finally {

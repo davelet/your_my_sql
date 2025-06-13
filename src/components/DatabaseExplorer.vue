@@ -75,6 +75,9 @@ const removeSavedConnection = async (connectionId: string) => {
     // If this is the active connection, disconnect first
     if (dbStore.activeConnectionId === connectionId) {
       await dbStore.closeConnection(connectionId);
+      // Since closeConnection no longer removes the connection, we need to do it manually
+      dbStore.connections = dbStore.connections.filter(conn => conn.id !== connectionId);
+      await dbStore.saveConnectionsToConfig();
     } else {
       // Just remove from the connections list
       dbStore.connections = dbStore.connections.filter(conn => conn.id !== connectionId);
@@ -104,7 +107,7 @@ watch(rowLimit, async (newLimit, oldLimit) => {
           <div class="connection-card-header">
             <h4>{{ conn.name }}</h4>
             <div class="connection-details">
-              {{ conn.username }}@{{ conn.host }}:{{ conn.port }}
+              {{ conn.jdbc_url ? conn.jdbc_url : `${conn.username}@${conn.host}:${conn.port}` }}
               {{ conn.database ? `/ ${conn.database}` : '' }}
             </div>
           </div>
@@ -125,7 +128,7 @@ watch(rowLimit, async (newLimit, oldLimit) => {
       <div class="explorer-header">
         <h2>{{ activeConnection.name }}</h2>
         <div class="connection-info">
-          {{ activeConnection.username }}@{{ activeConnection.host }}:{{ activeConnection.port }}
+          {{ activeConnection.jdbc_url ? activeConnection.jdbc_url : `${activeConnection.username}@${activeConnection.host}:${activeConnection.port}` }}
           <el-button 
             type="danger" 
             size="small" 
@@ -317,6 +320,11 @@ watch(rowLimit, async (newLimit, oldLimit) => {
   padding: 10px;
 }
 
+.table-list {
+  max-height: 50%;
+  overflow-y: auto;
+}
+
 .database-list h3,
 .table-list h3 {
   margin-bottom: 10px;
@@ -329,6 +337,16 @@ watch(rowLimit, async (newLimit, oldLimit) => {
   border-right: none;
 }
 
+/* Enhance the selected item background color */
+:deep(.el-menu-item.is-active) {
+  background-color: #ecf5ff !important;
+  color: #409eff !important;
+  font-weight: bold;
+}
+
+:deep(.el-menu-item:hover) {
+  background-color: #f5f7fa;
+}
 .data-view {
   flex: 1;
   padding: 10px;

@@ -38,20 +38,23 @@ impl Default for AppConfig {
 }
 
 pub fn get_config_file_path() -> Result<PathBuf, String> {
-    // Get the app data directory using standard Rust APIs
-    let app_data_dir = dirs::data_dir()
-        .ok_or_else(|| "Could not find app data directory".to_string())?;
+    // Get the home directory using standard Rust APIs
+    let home_dir = dirs::home_dir()
+        .ok_or_else(|| "Could not find home directory".to_string())?;
     
-    // Create a directory for our app
-    let app_dir = app_data_dir.join("com.davelet.you-my-sql.app");
+    // Create a .config/you-my-sql directory in the home directory
+    let app_dir = home_dir.join(".config").join("you-my-sql");
     
     // Create the directory if it doesn't exist
     if !app_dir.exists() {
+        println!("Config directory does not exist, creating it");
         fs::create_dir_all(&app_dir)
-            .map_err(|e| format!("Failed to create app data directory: {}", e))?;
+            .map_err(|e| format!("Failed to create config directory: {}", e))?;
     }
     
-    Ok(app_dir.join("config.toml"))
+    let config_path = app_dir.join("config.toml");
+    
+    Ok(config_path)
 }
 
 pub fn read_config() -> Result<AppConfig, String> {

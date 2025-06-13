@@ -29,4 +29,19 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  // 4. Configure build options to handle chunk size warnings
+  build: {
+    // Increase the warning limit for chunk size to 1000kb
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        // Configure manual chunks to better split the code
+        manualChunks: {
+          'element-plus': ['element-plus'],
+          'codemirror': ['@codemirror/lang-sql', '@codemirror/theme-one-dark', 'vue-codemirror'],
+          'vue-vendor': ['vue', 'pinia'],
+        }
+      }
+    }
+  },
 }));

@@ -2,15 +2,15 @@
 
 ## Overview
 
-This document explains how the configuration system works in the You My SQL application. The application uses a TOML configuration file stored in the user's application data directory to persist user settings.
+This document explains how the configuration system works in the You My SQL application. The application uses a TOML configuration file stored in the user's home directory to persist user settings.
 
 ## Configuration File Location
 
-The configuration file is stored in the application data directory, which varies by operating system:
+The configuration file is stored in the `~/.config/you-my-sql/` directory:
 
-- **macOS**: `~/Library/Application Support/com.davelet.you-my-sql.app/config.toml`
-- **Windows**: `C:\Users\<username>\AppData\Roaming\com.davelet.you-my-sql.app\config.toml`
-- **Linux**: `~/.local/share/com.davelet.you-my-sql.app/config.toml`
+- **macOS**: `~/.config/you-my-sql/config.toml`
+- **Windows**: `C:\Users\<username>\.config\you-my-sql\config.toml`
+- **Linux**: `~/.config/you-my-sql/config.toml`
 
 ## Configuration Options
 
@@ -81,16 +81,16 @@ async function getConfig() {
 
 ## Security Considerations
 
-The configuration file is stored in the user's application data directory, which is a secure location that only the user has access to. The file does not store sensitive information like database passwords.
+The configuration file is stored in the user's configuration directory, which is a secure location that only the user has access to. The file does not store sensitive information like database passwords.
 
 ## Troubleshooting
 
 If the application is unable to read or write the configuration file, it will display an error message. Common issues include:
 
-- Permissions issues with the application data directory
+- Permissions issues with the configuration directory
 - Corrupted configuration file
 
 To resolve these issues, you can try:
 
-1. Checking the permissions of the application data directory
+1. Checking the permissions of the configuration directory (~/.config/you-my-sql/)
 2. Deleting the configuration file (a new default one will be created)
