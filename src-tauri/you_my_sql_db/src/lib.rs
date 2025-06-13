@@ -1,4 +1,5 @@
-use mysql::{prelude::*, Opts, OptsBuilder, Pool, PooledConn, Row, Value};  
+use mysql::prelude::Queryable as _;
+use mysql::{OptsBuilder, Pool, Value};  
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

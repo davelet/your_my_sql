@@ -31,7 +31,7 @@ const rules = {
       required: true, 
       message: 'Please enter a JDBC URL', 
       trigger: 'blur',
-      validator: (rule, value, callback) => {
+      validator: (_rule: any, value: string, callback: (error?: Error) => void) => {
         if (useJdbcUrl.value && !value) {
           callback(new Error('Please enter a JDBC URL'));
         } else if (useJdbcUrl.value && !value.startsWith('jdbc:mysql://')) {
@@ -70,7 +70,7 @@ const connect = async () => {
       
       // Add JDBC URL if using that connection type
       if (useJdbcUrl.value && formData.jdbc_url) {
-        connectionConfig.jdbc_url = formData.jdbc_url;
+        (connectionConfig as any).jdbc_url = formData.jdbc_url;
       }
       
       console.log('Attempting to add connection with config:', connectionConfig);
@@ -101,8 +101,8 @@ const resetForm = () => {
   formData.username = 'root';
   formData.password = '';
   formData.database = '';
-  formData.jdbc_url = '';
-  useJdbcUrl.value = false;
+  formData.jdbc_url = 'jdbc:mysql://localhost:3306/table?autoReconnect=true';
+  // useJdbcUrl.value = false;
 };
 
 watch(useJdbcUrl, (newValue) => {

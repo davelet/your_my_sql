@@ -1,7 +1,6 @@
-use you_my_sql_db::{CONNECTION_MANAGER, ConnectionConfig, DbError, QueryResult};
+use you_my_sql_db::{CONNECTION_MANAGER, ConnectionConfig, QueryResult};
 use you_my_sql_config::{AppConfig, read_config, write_config};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 struct CommandResponse<T> {

@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
+import { useDbStore } from './stores/db';
 import ConnectionForm from './components/ConnectionForm.vue';
 import DatabaseExplorer from './components/DatabaseExplorer.vue';
 import SqlEditor from './components/SqlEditor.vue';
 import ConfigSettings from './components/ConfigSettings.vue';
 
+const dbStore = useDbStore();
 const activeTab = ref('explorer');
 const showConnectionDialog = ref(false);
+
+onMounted(async () => {
+  // Initialize the database store and load saved connections
+  await dbStore.initialize();
+});
 
 const handleConnected = () => {
   showConnectionDialog.value = false;

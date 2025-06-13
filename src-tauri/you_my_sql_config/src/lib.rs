@@ -4,12 +4,24 @@ use std::path::PathBuf;
 use std::io::ErrorKind;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConnectionConfig {
+    pub id: String,
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+    pub database: Option<String>,
+    pub jdbc_url: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     pub theme: String,
     pub font_size: u8,
     pub show_line_numbers: bool,
     pub max_rows_display: usize,
-    pub recent_connections: Vec<String>,
+    pub saved_connections: Vec<ConnectionConfig>,
     // Add more configuration options as needed
 }
 
@@ -20,7 +32,7 @@ impl Default for AppConfig {
             font_size: 14,
             show_line_numbers: true,
             max_rows_display: 100,
-            recent_connections: Vec::new(),
+            saved_connections: Vec::new(),
         }
     }
 }

@@ -37,9 +37,46 @@ export const useDbStore = defineStore('db', {
     queryResult: null as QueryResult | null,
     isLoading: false,
     error: null as string | null,
+    initialized: false,
   }),
 
   actions: {
+    async initialize() {
+      if (this.initialized) return;
+      
+      try {
+        const response = await invoke<CommandResponse<any>>('get_app_config');
+        
+        if (response.success && response.data && response.data.saved_connections) {
+          // Store connections in memory but don't connect to them yet
+          this.connections = response.data.saved_connections;
+          
+          // If we have connections, set the first one as active
+          if (this.connections.length > 0) {
+            this.activeConnectionId = this.connections[0].id;
+          }
+        }
+        
+        this.initialized = true;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+      }
+    },
+    
+    async saveConnectionsToConfig() {
+      try {
+        const response = await invoke<CommandResponse<any>>('get_app_config');
+        
+        if (response.success && response.data) {
+          const config = response.data;
+          config.saved_connections = this.connections;
+          
+          await invoke<CommandResponse<void>>('save_app_config', { config });
+        }
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+      }
+    },
     async addConnection(config: Omit<ConnectionConfig, 'id'>) {
       this.isLoading = true;
       this.error = null;
@@ -56,6 +93,10 @@ export const useDbStore = defineStore('db', {
         this.connections.push(connectionConfig);
         this.activeConnectionId = connectionConfig.id;
         await this.loadDatabases();
+        
+        // Save the updated connections list to config
+        await this.saveConnectionsToConfig();
+        
         return connectionId;
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
@@ -189,6 +230,9 @@ export const useDbStore = defineStore('db', {
           this.selectedTable = null;
           this.tableData = null;
         }
+        
+        // Save the updated connections list to config
+        await this.saveConnectionsToConfig();
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
       } finally {

@@ -50,6 +50,43 @@ const disconnectDatabase = async () => {
   }
 };
 
+const connectToSaved = async (connection: any) => {
+  try {
+    // We need to reconnect to the database using the saved credentials
+    const connectionConfig = {
+      name: connection.name,
+      host: connection.host,
+      port: connection.port,
+      username: connection.username,
+      password: connection.password,
+      database: connection.database,
+      jdbc_url: connection.jdbc_url
+    };
+    
+    await dbStore.addConnection(connectionConfig);
+    ElMessage.success('Connected successfully');
+  } catch (error) {
+    ElMessage.error('Failed to connect: ' + (error instanceof Error ? error.message : String(error)));
+  }
+};
+
+const removeSavedConnection = async (connectionId: string) => {
+  try {
+    // If this is the active connection, disconnect first
+    if (dbStore.activeConnectionId === connectionId) {
+      await dbStore.closeConnection(connectionId);
+    } else {
+      // Just remove from the connections list
+      dbStore.connections = dbStore.connections.filter(conn => conn.id !== connectionId);
+      await dbStore.saveConnectionsToConfig();
+    }
+    
+    ElMessage.success('Connection removed');
+  } catch (error) {
+    ElMessage.error('Failed to remove connection: ' + (error instanceof Error ? error.message : String(error)));
+  }
+};
+
 // Watch for changes in rowLimit and refresh data if needed
 watch(rowLimit, async (newLimit, oldLimit) => {
   if (newLimit !== oldLimit && selectedTable.value) {
@@ -61,7 +98,27 @@ watch(rowLimit, async (newLimit, oldLimit) => {
 <template>
   <div class="database-explorer">
     <div v-if="!activeConnection" class="no-connection">
-      <el-empty description="No active database connection" />
+      <div v-if="dbStore.connections.length > 0" class="saved-connections">
+        <h3>Saved Connections</h3>
+        <el-card v-for="conn in dbStore.connections" :key="conn.id" class="connection-card">
+          <div class="connection-card-header">
+            <h4>{{ conn.name }}</h4>
+            <div class="connection-details">
+              {{ conn.username }}@{{ conn.host }}:{{ conn.port }}
+              {{ conn.database ? `/ ${conn.database}` : '' }}
+            </div>
+          </div>
+          <div class="connection-card-actions">
+            <el-button type="primary" size="small" @click="connectToSaved(conn)" :loading="isLoading">
+              Connect
+            </el-button>
+            <el-button type="danger" size="small" @click="removeSavedConnection(conn.id)">
+              Remove
+            </el-button>
+          </div>
+        </el-card>
+      </div>
+      <el-empty v-else description="No saved database connections" />
     </div>
     
     <template v-else>
@@ -195,6 +252,50 @@ watch(rowLimit, async (newLimit, oldLimit) => {
   gap: 10px;
   font-size: 14px;
   color: #666;
+}
+
+.no-connection {
+  padding: 20px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.saved-connections {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.saved-connections h3 {
+  margin-bottom: 10px;
+  font-size: 18px;
+  color: #333;
+}
+
+.connection-card {
+  margin-bottom: 10px;
+}
+
+.connection-card-header {
+  margin-bottom: 10px;
+}
+
+.connection-card-header h4 {
+  margin: 0 0 5px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.connection-details {
+  font-size: 14px;
+  color: #666;
+}
+
+.connection-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .explorer-content {
