@@ -10,6 +10,7 @@ interface ConnectionConfig {
   username: string;
   password: string;
   database?: string;
+  jdbc_url?: string;
 }
 
 interface QueryResult {
@@ -50,17 +51,12 @@ export const useDbStore = defineStore('db', {
           port: Number(config.port) || 3306
         };
         
-        const response = await invoke<CommandResponse<string>>('connect_to_database', { config: connectionConfig });
+        const connectionId = await invoke<string>('connect_to_database', { config: connectionConfig });
         
-        if (response.success) {
-          this.connections.push(connectionConfig);
-          this.activeConnectionId = connectionConfig.id;
-          await this.loadDatabases();
-          return connectionConfig.id;
-        } else {
-          this.error = response.error || 'Failed to connect to database';
-          return null;
-        }
+        this.connections.push(connectionConfig);
+        this.activeConnectionId = connectionConfig.id;
+        await this.loadDatabases();
+        return connectionId;
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
         return null;

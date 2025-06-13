@@ -35,6 +35,7 @@ pub struct ConnectionConfig {
     pub username: String,
     pub password: String,
     pub database: Option<String>,
+    pub jdbc_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -56,7 +57,62 @@ impl ConnectionManager {
         }
     }
     
-    pub fn create_connection(&mut self, config: ConnectionConfig) -> Result<(), DbError> {
+    // Parse JDBC URL and update the config
+    fn parse_jdbc_url(&self, jdbc_url: &str, config: &mut ConnectionConfig) -> Result<(), DbError> {
+        // Example: jdbc:mysql://hostname:port/database?param1=value1&param2=value2
+        if !jdbc_url.starts_with("jdbc:mysql://") {
+            return Err(DbError::ConnectionError("Unsupported JDBC URL format. Only MySQL is supported.".to_string()));
+        }
+        
+        // Remove the jdbc:mysql:// prefix
+        let url = &jdbc_url["jdbc:mysql://".len()..];
+        
+        // Split by / to separate host:port from database?params
+        let parts: Vec<&str> = url.splitn(2, '/').collect();
+        if parts.is_empty() {
+            return Err(DbError::ConnectionError("Invalid JDBC URL format".to_string()));
+        }
+        
+        // Parse host and port
+        let host_port = parts[0];
+        let host_port_parts: Vec<&str> = host_port.split(':').collect();
+        
+        // Update host
+        config.host = host_port_parts[0].to_string();
+        
+        // Update port if specified
+        if host_port_parts.len() > 1 {
+            match host_port_parts[1].parse::<u16>() {
+                Ok(port) => config.port = port,
+                Err(_) => return Err(DbError::ConnectionError("Invalid port in JDBC URL".to_string())),
+            }
+        }
+        
+        // Parse database and parameters if they exist
+        if parts.len() > 1 {
+            let db_params = parts[1];
+            let db_params_parts: Vec<&str> = db_params.splitn(2, '?').collect();
+            
+            // Update database
+            if !db_params_parts[0].is_empty() {
+                config.database = Some(db_params_parts[0].to_string());
+            }
+            
+            // We could parse additional parameters here if needed
+            // For now, we're ignoring them as they're typically handled by the MySQL driver
+        }
+        
+        Ok(())
+    }
+    
+    pub fn create_connection(&mut self, mut config: ConnectionConfig) -> Result<(), DbError> {
+        // Parse JDBC URL if provided
+        if let Some(jdbc_url) = config.jdbc_url.clone() {
+            if let Err(e) = self.parse_jdbc_url(&jdbc_url, &mut config) {
+                return Err(e);
+            }
+        }
+        
         let opts = OptsBuilder::new()
             .ip_or_hostname(Some(config.host))
             .tcp_port(config.port)

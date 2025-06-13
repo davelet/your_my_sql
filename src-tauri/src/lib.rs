@@ -34,16 +34,10 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn connect_to_database(config: ConnectionConfig) -> CommandResponse<String> {
-    let mut manager = match CONNECTION_MANAGER.lock() {
-        Ok(manager) => manager,
-        Err(e) => return CommandResponse::error(format!("Failed to acquire lock: {}", e)),
-    };
+async fn connect_to_database(config: ConnectionConfig) -> Result<String, String> {
+    let mut manager = CONNECTION_MANAGER.lock().map_err(|e| format!("Failed to acquire lock: {}", e))?;
 
-    match manager.create_connection(config.clone()) {
-        Ok(_) => CommandResponse::success(config.id),
-        Err(e) => CommandResponse::error(e),
-    }
+    manager.create_connection(config.clone()).map(|_| config.id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
