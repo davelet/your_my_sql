@@ -1,141 +1,67 @@
-use you_my_sql_db::{CONNECTION_MANAGER, ConnectionConfig, QueryResult};
-use you_my_sql_config::{AppConfig, read_config, write_config};
-use serde::Serialize;
+//! Main library for the You My SQL application
 
-#[derive(Debug, Serialize)]
-struct CommandResponse<T> {
-    success: bool,
-    data: Option<T>,
-    error: Option<String>,
-}
+pub mod commands;
+mod setup;
 
-impl<T> CommandResponse<T> {
-    fn success(data: T) -> Self {
-        CommandResponse {
-            success: true,
-            data: Some(data),
-            error: None,
-        }
-    }
-
-    fn error(err: impl ToString) -> Self {
-        CommandResponse {
-            success: false,
-            data: None,
-            error: Some(err.to_string()),
-        }
-    }
-}
-
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
-async fn connect_to_database(config: ConnectionConfig) -> Result<String, String> {
-    let mut manager = CONNECTION_MANAGER.lock().map_err(|e| format!("Failed to acquire lock: {}", e))?;
-
-    manager.create_connection(config.clone()).map(|_| config.id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn execute_query(conn_id: String, query: String) -> CommandResponse<QueryResult> {
-    let manager = match CONNECTION_MANAGER.lock() {
-        Ok(manager) => manager,
-        Err(e) => return CommandResponse::error(format!("Failed to acquire lock: {}", e)),
-    };
-
-    match manager.execute_query(&conn_id, &query) {
-        Ok(result) => CommandResponse::success(result),
-        Err(e) => CommandResponse::error(e),
-    }
-}
-
-#[tauri::command]
-async fn list_databases(conn_id: String) -> CommandResponse<Vec<String>> {
-    let manager = match CONNECTION_MANAGER.lock() {
-        Ok(manager) => manager,
-        Err(e) => return CommandResponse::error(format!("Failed to acquire lock: {}", e)),
-    };
-
-    match manager.list_databases(&conn_id) {
-        Ok(databases) => CommandResponse::success(databases),
-        Err(e) => CommandResponse::error(e),
-    }
-}
-
-#[tauri::command]
-async fn list_tables(conn_id: String, database: String) -> CommandResponse<Vec<String>> {
-    let manager = match CONNECTION_MANAGER.lock() {
-        Ok(manager) => manager,
-        Err(e) => return CommandResponse::error(format!("Failed to acquire lock: {}", e)),
-    };
-
-    match manager.list_tables(&conn_id, &database) {
-        Ok(tables) => CommandResponse::success(tables),
-        Err(e) => CommandResponse::error(e),
-    }
-}
-
-#[tauri::command]
-async fn get_table_data(conn_id: String, database: String, table: String, limit: usize) -> CommandResponse<QueryResult> {
-    let manager = match CONNECTION_MANAGER.lock() {
-        Ok(manager) => manager,
-        Err(e) => return CommandResponse::error(format!("Failed to acquire lock: {}", e)),
-    };
-
-    match manager.get_table_data(&conn_id, &database, &table, limit) {
-        Ok(result) => CommandResponse::success(result),
-        Err(e) => CommandResponse::error(e),
-    }
-}
-
-#[tauri::command]
-async fn close_connection(conn_id: String) -> CommandResponse<()> {
-    let mut manager = match CONNECTION_MANAGER.lock() {
-        Ok(manager) => manager,
-        Err(e) => return CommandResponse::error(format!("Failed to acquire lock: {}", e)),
-    };
-
-    match manager.close_connection(&conn_id) {
-        Ok(_) => CommandResponse::success(()),
-        Err(e) => CommandResponse::error(e),
-    }
-}
-
-#[tauri::command]
-async fn get_app_config() -> CommandResponse<AppConfig> {
-    match read_config() {
-        Ok(config) => CommandResponse::success(config),
-        Err(e) => CommandResponse::error(e),
-    }
-}
-
-#[tauri::command]
-async fn save_app_config(config: AppConfig) -> CommandResponse<()> {
-    match write_config(&config) {
-        Ok(_) => CommandResponse::success(()),
-        Err(e) => CommandResponse::error(e),
-    }
-}
+pub use commands::*;
+pub use setup::setup_app;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
+        .setup(setup_app)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                // Get a handle to the connection manager and close all connections
+                let mut manager = match you_my_sql_db::CONNECTION_MANAGER.lock() {
+                    Ok(manager) => manager,
+                    Err(e) => {
+                        eprintln!("Failed to acquire lock on connection manager: {}", e);
+                        return;
+                    }
+                };
+                
+                // Close all database connections
+                if let Err(e) = manager.close_all_connections() {
+                    eprintln!("Error closing database connections: {}", e);
+                }
+                
+                // Save window state before closing
+                if let Err(e) = save_window_state_local(window) {
+                    eprintln!("Error saving window state: {}", e);
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
-            greet,
             connect_to_database,
             execute_query,
             list_databases,
             list_tables,
             get_table_data,
             close_connection,
+            close_all_connections,
             get_app_config,
-            save_app_config
+            save_app_config,
+            save_window_state,
+            get_window_state
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+// Internal function to save window state
+fn save_window_state_local(window: &tauri::Window) -> Result<(), String> {
+    let position = window.outer_position().map_err(|e| e.to_string())?;
+    let size = window.outer_size().map_err(|e| e.to_string())?;
+    
+    let params = crate::commands::WindowStateParams {
+        x: position.x,
+        y: position.y,
+        width: size.width as f64,  // Convert u32 to f64
+        height: size.height as f64, // Convert u32 to f64
+    };
+    
+    save_window_state_internal(params)
 }

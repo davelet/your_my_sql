@@ -94,12 +94,11 @@ impl ConnectionManager {
         if parts.len() > 1 {
             let db_params = parts[1];
             let db_params_parts: Vec<&str> = db_params.splitn(2, '?').collect();
-            
             // Update database
             if !db_params_parts[0].is_empty() {
                 config.database = Some(db_params_parts[0].to_string());
+                config.schema = Some(db_params_parts[0].to_string());
             }
-            
             // We could parse additional parameters here if needed
             // For now, we're ignoring them as they're typically handled by the MySQL driver
         }
@@ -239,10 +238,44 @@ impl ConnectionManager {
     }
     
     pub fn close_connection(&mut self, id: &str) -> Result<(), DbError> {
-        if self.connections.remove(id).is_none() {
-            return Err(DbError::NoConnection(id.to_string()));
+        match self.connections.remove(id) {
+            Some(_pool) => {
+                // Log connection closure
+                println!("Closing database connection: {}", id);
+                
+                // For MySQL pools, explicit disconnect is not needed as Drop trait handles cleanup
+                // But we could add additional cleanup if needed in the future
+                
+                Ok(())
+            },
+            None => Err(DbError::NoConnection(id.to_string())),
         }
-        Ok(())
+    }
+    
+    /// Closes all active database connections
+    /// This should be called during application shutdown for graceful cleanup
+    pub fn close_all_connections(&mut self) -> Result<(), DbError> {
+        println!("Closing all database connections: {} active connections", self.connections.len());
+        
+        // Store any connection IDs that failed to close
+        let mut failed_connections = Vec::new();
+        
+        // Get all connection IDs
+        let connection_ids: Vec<String> = self.connections.keys().cloned().collect();
+        
+        // Close each connection
+        for id in connection_ids {
+            if let Err(e) = self.close_connection(&id) {
+                println!("Failed to close connection {}: {}", id, e);
+                failed_connections.push(id);
+            }
+        }
+        
+        if failed_connections.is_empty() {
+            Ok(())
+        } else {
+            Err(DbError::ConnectionError(format!("Failed to close {} connections", failed_connections.len())))
+        }
     }
 }
 

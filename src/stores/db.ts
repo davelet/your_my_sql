@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { invoke } from '@tauri-apps/api/core';
 import { v4 as uuidv4 } from 'uuid';
 
-interface ConnectionConfig {
+export interface ConnectionConfig {
   id: string;
   name: string;
   host: string;
@@ -298,6 +298,36 @@ export const useDbStore = defineStore('db', {
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
         throw error; // Re-throw so the UI can show an error message
+      } finally {
+        this.isLoading = false;
+      }
+    },
+    
+    async closeAllConnections() {
+      this.isLoading = true;
+      this.error = null;
+      
+      try {
+        const response = await invoke<CommandResponse<void>>('close_all_connections');
+        
+        if (!response.success) {
+          this.error = response.error || 'Failed to close all connections';
+          return false;
+        }
+        
+        // Reset all connection state
+        this.activeConnectionId = null;
+        this.databases = [];
+        this.tables = [];
+        this.selectedDatabase = null;
+        this.selectedTable = null;
+        this.tableData = null;
+        this.queryResult = null;
+        
+        return true;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        return false;
       } finally {
         this.isLoading = false;
       }

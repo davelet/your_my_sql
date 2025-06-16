@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useDbStore } from '../stores/db';
-import { ElMessage } from 'element-plus';
+import { useDbStore, ConnectionConfig } from '../stores/db';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 const dbStore = useDbStore();
 
-const activeConnection = computed(() => {
+const activeConnection = computed<ConnectionConfig | null>(() => {
   if (!dbStore.activeConnectionId) return null;
   return dbStore.connections.find(conn => conn.id === dbStore.activeConnectionId) || null;
 });
@@ -33,6 +33,10 @@ const connectionStatusClass = (status: string) => {
     'disconnected': 'status-disconnected'
   };
   return classMap[status] || '';
+};
+
+const isConnectionActive = (connId: string) => {
+  return activeConnection.value?.id === connId;
 };
 
 const isLoading = computed(() => dbStore.isLoading);
@@ -121,21 +125,22 @@ const connectToSaved = async (connection: any) => {
 
 const removeSavedConnection = async (connectionId: string) => {
   try {
+    await ElMessageBox.confirm('Are you sure you want to remove this connection?', 'Confirm', {
+      confirmButtonText: 'Yes',
+      cancelButtonText: 'No',
+      type: 'warning',
+    });
     // If this is the active connection, disconnect first
     if (dbStore.activeConnectionId === connectionId) {
       await dbStore.closeConnection(connectionId);
-      // Since closeConnection no longer removes the connection, we need to do it manually
-      dbStore.connections = dbStore.connections.filter(conn => conn.id !== connectionId);
-      await dbStore.saveConnectionsToConfig();
-    } else {
-      // Just remove from the connections list
-      dbStore.connections = dbStore.connections.filter(conn => conn.id !== connectionId);
-      await dbStore.saveConnectionsToConfig();
     }
-    
+    dbStore.connections = dbStore.connections.filter(conn => conn.id !== connectionId);
+    await dbStore.saveConnectionsToConfig();
     ElMessage.success('Connection removed');
   } catch (error) {
-    ElMessage.error('Failed to remove connection: ' + (error instanceof Error ? error.message : String(error)));
+    if (error !== 'cancel') {
+      ElMessage.error('Failed to remove connection: ' + (error instanceof Error ? error.message : String(error)));
+    }
   }
 };
 
@@ -184,7 +189,7 @@ watch(rowLimit, async (newLimit, oldLimit) => {
           v-for="conn in dbStore.connections" 
           :key="conn.id" 
           class="connection-card"
-          :class="{ 'connection-card-active': activeConnection?.id === conn.id }"
+          :class="{ 'connection-card-active': isConnectionActive(conn.id) }"
         >
           <div class="connection-card-header">
             <div class="connection-title">
@@ -221,9 +226,9 @@ watch(rowLimit, async (newLimit, oldLimit) => {
               size="small" 
               @click="connectToSaved(conn)" 
               :loading="connectingId === conn.id"
-              :disabled="activeConnection?.id === conn.id"
+              :disabled="isConnectionActive(conn.id)"
             >
-              {{ activeConnection?.id === conn.id ? 'Connected' : 'Connect' }}
+              {{ isConnectionActive(conn.id) ? 'Connected' : 'Connect' }}
             </el-button>
             <el-button 
               type="danger" 
@@ -242,13 +247,13 @@ watch(rowLimit, async (newLimit, oldLimit) => {
     <template v-else>
       <div class="explorer-header">
         <div class="connection-header">
-          <h2>{{ activeConnection.name }}</h2>
+          <h2 v-if="activeConnection">{{ activeConnection.name }}</h2>
           <span class="connection-status status-connected">
             <el-icon><SuccessFilled /></el-icon>
             Connected
           </span>
         </div>
-        <div class="connection-info">
+        <div class="connection-details-active" v-if="activeConnection">
           <div class="connection-detail">
             <el-icon><Connection /></el-icon>
             <span>{{ activeConnection.jdbc_url || `${activeConnection.host}:${activeConnection.port}` }}</span>
@@ -257,17 +262,26 @@ watch(rowLimit, async (newLimit, oldLimit) => {
             <el-icon><Folder /></el-icon>
             <span>{{ activeConnection.database }}</span>
           </div>
-          <el-button 
-            type="danger" 
-            size="small" 
-            @click="disconnectDatabase"
-            :loading="isLoading"
-            plain
-          >
-            <el-icon><Connection /></el-icon>
-            <span>Disconnect</span>
-          </el-button>
+          <div v-if="activeConnection.schema" class="connection-detail">
+            <el-icon><FolderOpened /></el-icon>
+            <span>{{ activeConnection.schema }}</span>
+          </div>
+          <div class="connection-detail">
+            <el-icon><User /></el-icon>
+            <span>{{ activeConnection.username }}</span>
+          </div>
         </div>
+        <el-button 
+          v-if="activeConnection" 
+          type="danger" 
+          size="small" 
+          @click="disconnectDatabase"
+          :loading="isLoading"
+          plain
+        >
+          <el-icon><Connection /></el-icon>
+          <span>Disconnect</span>
+        </el-button>
       </div>
       
       <div class="explorer-content">

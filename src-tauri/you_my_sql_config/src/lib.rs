@@ -13,6 +13,26 @@ pub struct ConnectionConfig {
     pub password: String,
     pub database: Option<String>,
     pub jdbc_url: Option<String>,
+    pub schema: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WindowState {
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl Default for WindowState {
+    fn default() -> Self {
+        Self {
+            x: None,
+            y: None,
+            width: 1200.0,
+            height: 800.0,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -22,7 +42,7 @@ pub struct AppConfig {
     pub show_line_numbers: bool,
     pub max_rows_display: usize,
     pub saved_connections: Vec<ConnectionConfig>,
-    // Add more configuration options as needed
+    pub window_state: Option<WindowState>,
 }
 
 impl Default for AppConfig {
@@ -33,6 +53,7 @@ impl Default for AppConfig {
             show_line_numbers: true,
             max_rows_display: 100,
             saved_connections: Vec::new(),
+            window_state: None,
         }
     }
 }
