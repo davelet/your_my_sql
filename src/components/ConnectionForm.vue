@@ -12,6 +12,7 @@ const formData = reactive({
   username: 'root',
   password: '',
   database: '',
+  schema: '',
   jdbc_url: '',
   connection_type: 'standard' // 'standard' or 'jdbc'
 });
@@ -65,7 +66,8 @@ const connect = async () => {
         port: formData.port,
         username: formData.username,
         password: formData.password,
-        database: formData.database || undefined
+        database: formData.database || undefined,
+        schema: formData.schema || undefined
       };
       
       // Add JDBC URL if using that connection type
@@ -151,7 +153,10 @@ watch(useJdbcUrl, (newValue) => {
       </el-form-item>
       
       <el-form-item label="Database" prop="database">
-        <el-input v-model="formData.database" placeholder="(optional)" />
+        <el-input v-model="formData.database" placeholder="Optional" />
+      </el-form-item>
+      <el-form-item label="Schema" prop="schema">
+        <el-input v-model="formData.schema" placeholder="Optional" />
       </el-form-item>
     </template>
     

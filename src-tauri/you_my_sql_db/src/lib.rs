@@ -36,6 +36,7 @@ pub struct ConnectionConfig {
     pub username: String,
     pub password: String,
     pub database: Option<String>,
+    pub schema: Option<String>,
     pub jdbc_url: Option<String>,
 }
 
@@ -114,24 +115,31 @@ impl ConnectionManager {
             }
         }
         
-        let opts = OptsBuilder::new()
+        let mut opts = OptsBuilder::new()
             .ip_or_hostname(Some(config.host))
             .tcp_port(config.port)
             .user(Some(config.username))
             .pass(Some(config.password));
             
-        let opts = if let Some(db) = &config.database {
-            opts.db_name(Some(db))
-        } else {
-            opts
-        };
+        // Set database name if provided
+        if let Some(db) = &config.database {
+            opts = opts.db_name(Some(db));
+        }
         
         let pool = Pool::new(opts)
             .map_err(|e| DbError::ConnectionError(e.to_string()))?;
             
         // Test connection
-        let _conn = pool.get_conn()
+        let mut conn = pool.get_conn()
             .map_err(|e| DbError::ConnectionError(e.to_string()))?;
+            
+        // Set schema if provided
+        if let Some(schema) = &config.schema {
+            if !schema.is_empty() {
+                conn.query_drop(format!("USE `{}`;", schema))
+                    .map_err(|e| DbError::ConnectionError(format!("Failed to set schema: {}", e)))?;
+            }
+        }
             
         self.connections.insert(config.id.clone(), pool);
         Ok(())

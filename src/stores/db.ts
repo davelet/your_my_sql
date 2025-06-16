@@ -10,6 +10,7 @@ interface ConnectionConfig {
   username: string;
   password: string;
   database?: string;
+  schema?: string;
   jdbc_url?: string;
 }
 
@@ -48,13 +49,10 @@ export const useDbStore = defineStore('db', {
         const response = await invoke<CommandResponse<any>>('get_app_config');
         
         if (response.success && response.data && response.data.saved_connections) {
-          // Store connections in memory but don't connect to them yet
+          // Store connections in memory but don't connect to them
           this.connections = response.data.saved_connections;
-          
-          // If we have connections, set the first one as active
-          if (this.connections.length > 0) {
-            this.activeConnectionId = this.connections[0].id;
-          }
+          // Don't set any connection as active on startup
+          this.activeConnectionId = null;
         }
         
         this.initialized = true;
@@ -77,27 +75,56 @@ export const useDbStore = defineStore('db', {
         this.error = error instanceof Error ? error.message : String(error);
       }
     },
-    async addConnection(config: Omit<ConnectionConfig, 'id'>) {
+    async addConnection(config: Omit<ConnectionConfig, 'id'>, closeExisting = true) {
       this.isLoading = true;
       this.error = null;
       
       try {
-        const connectionConfig = {
+        // Close existing connection if requested
+        if (closeExisting && this.activeConnectionId) {
+          try {
+            await this.closeConnection(this.activeConnectionId);
+          } catch (error) {
+            console.warn('Failed to close existing connection:', error);
+            // Continue with new connection even if closing old one fails
+          }
+        }
+
+        // Create connection config with ID and proper types
+        const connectionConfig: ConnectionConfig = {
           ...config,
           id: uuidv4(),
-          port: Number(config.port) || 3306
+          port: Number(config.port) || 3306,
+          schema: config.schema || undefined
         };
         
-        const connectionId = await invoke<string>('connect_to_database', { config: connectionConfig });
+        // Connect to the database
+        const connectionId = await invoke<string>('connect_to_database', { 
+          config: {
+            ...connectionConfig,
+            schema: connectionConfig.schema || null
+          } 
+        });
         
-        this.connections.push(connectionConfig);
+        // Add to connections list if not already present
+        if (!this.connections.some(conn => conn.id === connectionConfig.id)) {
+          this.connections.push(connectionConfig);
+          await this.saveConnectionsToConfig();
+        }
+        
+        // Set as active and load databases
         this.activeConnectionId = connectionConfig.id;
-        await this.loadDatabases();
         
-        // Save the updated connections list to config
-        await this.saveConnectionsToConfig();
+        // If a schema is specified, select it after loading databases
+        if (connectionConfig.schema) {
+          await this.loadDatabases();
+          await this.selectDatabase(connectionConfig.schema);
+        } else {
+          await this.loadDatabases();
+        }
         
         return connectionId;
+        
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
         return null;
@@ -219,11 +246,9 @@ export const useDbStore = defineStore('db', {
       try {
         await invoke<CommandResponse<void>>('close_connection', { connId });
         
-        // Remove from local state
-        this.connections = this.connections.filter(conn => conn.id !== connId);
-        
+        // Clear active connection state
         if (this.activeConnectionId === connId) {
-          this.activeConnectionId = this.connections.length > 0 ? this.connections[0].id : null;
+          this.activeConnectionId = null;
           this.databases = [];
           this.tables = [];
           this.selectedDatabase = null;
@@ -237,14 +262,45 @@ export const useDbStore = defineStore('db', {
       }
     },
     
-    setActiveConnection(connectionId: string) {
-      this.activeConnectionId = connectionId;
-      this.databases = [];
-      this.tables = [];
-      this.selectedDatabase = null;
-      this.selectedTable = null;
-      this.tableData = null;
-      this.loadDatabases();
+    async setActiveConnection(connectionId: string) {
+      const connection = this.connections.find(conn => conn.id === connectionId);
+      if (!connection) return;
+      
+      this.isLoading = true;
+      this.error = null;
+      
+      try {
+        // First, establish the connection with the backend
+        await invoke('connect_to_database', { 
+          config: {
+            ...connection,
+            port: Number(connection.port) || 3306,
+            // Include schema in the connection config if specified
+            schema: connection.schema || null
+          } 
+        });
+        
+        // Then update the active connection and load databases
+        this.activeConnectionId = connectionId;
+        this.databases = [];
+        this.tables = [];
+        this.selectedDatabase = null;
+        this.selectedTable = null;
+        this.tableData = null;
+        
+        // If a schema is specified, select it after loading databases
+        if (connection.schema) {
+          await this.loadDatabases();
+          await this.selectDatabase(connection.schema);
+        } else {
+          await this.loadDatabases();
+        }
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error; // Re-throw so the UI can show an error message
+      } finally {
+        this.isLoading = false;
+      }
     },
     
     clearQueryResult() {
