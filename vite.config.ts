@@ -37,9 +37,11 @@ export default defineConfig(async () => ({
       output: {
         // Configure manual chunks to better split the code
         manualChunks: {
+          'vue': ['vue'],
+          'pinia': ['pinia'],
           'element-plus': ['element-plus'],
-          'codemirror': ['@codemirror/lang-sql', '@codemirror/theme-one-dark', 'vue-codemirror'],
-          'vue-vendor': ['vue', 'pinia'],
+          'lodash': ['lodash', 'lodash-es'],
+          'uuid': ['uuid']
         }
       }
     }
