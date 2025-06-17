@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { invoke } from '@tauri-apps/api/core';
 import { v4 as uuidv4 } from 'uuid';
 import { ElMessage } from 'element-plus';
-import type { ConnectionConfig, QueryResult, CommandResponse, AppConfig, WindowState } from './db.types';
+import type { ConnectionConfig, QueryResult, CommandResponse, AppConfig } from './db.types';
 
 export const useDbStore = defineStore('db', {
   state: () => ({
@@ -39,6 +39,11 @@ export const useDbStore = defineStore('db', {
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
         console.error('Error during initialization:', this.error);
+        // Always mark as initialized even on error to prevent blocking the UI
+        this.initialized = true;
+        // Set default empty state
+        this.connections = [];
+        this.activeConnectionId = null;
       }
     },
     
