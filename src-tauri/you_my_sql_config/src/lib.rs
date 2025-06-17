@@ -11,7 +11,6 @@ pub struct ConnectionConfig {
     pub port: u16,
     pub username: String,
     pub password: String,
-    pub database: Option<String>,
     pub jdbc_url: Option<String>,
     pub schema: Option<String>,
 }

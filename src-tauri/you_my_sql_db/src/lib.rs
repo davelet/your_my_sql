@@ -35,7 +35,6 @@ pub struct ConnectionConfig {
     pub port: u16,
     pub username: String,
     pub password: String,
-    pub database: Option<String>,
     pub schema: Option<String>,
     pub jdbc_url: Option<String>,
 }
@@ -94,9 +93,8 @@ impl ConnectionManager {
         if parts.len() > 1 {
             let db_params = parts[1];
             let db_params_parts: Vec<&str> = db_params.splitn(2, '?').collect();
-            // Update database
+            // Update schema
             if !db_params_parts[0].is_empty() {
-                config.database = Some(db_params_parts[0].to_string());
                 config.schema = Some(db_params_parts[0].to_string());
             }
             // We could parse additional parameters here if needed
@@ -106,23 +104,23 @@ impl ConnectionManager {
         Ok(())
     }
     
-    pub fn create_connection(&mut self, mut config: ConnectionConfig) -> Result<(), DbError> {
+    pub fn create_connection(&mut self, mut config: ConnectionConfig) -> Result<ConnectionConfig, DbError> {
         // Parse JDBC URL if provided
         if let Some(jdbc_url) = config.jdbc_url.clone() {
             if let Err(e) = self.parse_jdbc_url(&jdbc_url, &mut config) {
                 return Err(e);
             }
-        }
+        };
         
         let mut opts = OptsBuilder::new()
-            .ip_or_hostname(Some(config.host))
+            .ip_or_hostname(Some(config.host.clone()))
             .tcp_port(config.port)
-            .user(Some(config.username))
-            .pass(Some(config.password));
+            .user(Some(config.username.clone()))
+            .pass(Some(config.password.clone()));
             
-        // Set database name if provided
-        if let Some(db) = &config.database {
-            opts = opts.db_name(Some(db));
+        // Set schema name if provided
+        if let Some(schema) = &config.schema {
+            opts = opts.db_name(Some(schema.clone()));
         }
         
         let pool = Pool::new(opts)
@@ -135,13 +133,15 @@ impl ConnectionManager {
         // Set schema if provided
         if let Some(schema) = &config.schema {
             if !schema.is_empty() {
-                conn.query_drop(format!("USE `{}`;", schema))
+                conn.query_drop(format!("USE `{}`;" , schema))
                     .map_err(|e| DbError::ConnectionError(format!("Failed to set schema: {}", e)))?;
             }
         }
+        
+        config.jdbc_url = None;
             
         self.connections.insert(config.id.clone(), pool);
-        Ok(())
+        Ok(config)
     }
     
     pub fn get_connection(&self, id: &str) -> Result<mysql::PooledConn, DbError> {
@@ -208,30 +208,30 @@ impl ConnectionManager {
         Ok(result)
     }
     
-    pub fn list_tables(&self, conn_id: &str, database: &str) -> Result<Vec<String>, DbError> {
+    pub fn list_tables(&self, conn_id: &str, schema: &str) -> Result<Vec<String>, DbError> {
         let mut conn = self.get_connection(conn_id)?;
         
-        // First select the database
-        let use_db = format!("USE {}", database);
-        conn.query_drop(&use_db)
+        // First select the schema
+        let use_schema = format!("USE {}", schema);
+        conn.query_drop(&use_schema)
             .map_err(|e| DbError::QueryError(e.to_string()))?;
-            
+        
         let query = "SHOW TABLES";
         let result: Vec<String> = conn.query(query)
             .map_err(|e| DbError::QueryError(e.to_string()))?;
-            
+        
         Ok(result)
     }
     
-    pub fn get_table_data(&self, conn_id: &str, database: &str, table: &str, limit: usize) 
+    pub fn get_table_data(&self, conn_id: &str, schema: &str, table: &str, limit: usize) 
         -> Result<QueryResult, DbError> {
         let mut conn = self.get_connection(conn_id)?;
         
-        // First select the database
-        let use_db = format!("USE {}", database);
-        conn.query_drop(&use_db)
+        // First select the schema
+        let use_schema = format!("USE {}", schema);
+        conn.query_drop(&use_schema)
             .map_err(|e| DbError::QueryError(e.to_string()))?;
-            
+        
         let query = format!("SELECT * FROM {} LIMIT {}", table, limit);
         // Call execute_query on self, not a new ConnectionManager instance
         self.execute_query(conn_id, &query)

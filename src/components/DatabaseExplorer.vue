@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useDbStore, ConnectionConfig } from '../stores/db';
+import { useDbStore } from '../stores/db';
+import type { ConnectionConfig } from '../stores/db.types';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 const dbStore = useDbStore();
@@ -40,17 +41,17 @@ const isConnectionActive = (connId: string) => {
 };
 
 const isLoading = computed(() => dbStore.isLoading);
-const databases = computed(() => dbStore.databases);
+const schemas = computed(() => dbStore.schemas);
 const tables = computed(() => dbStore.tables);
-const selectedDatabase = computed(() => dbStore.selectedDatabase);
+const selectedSchema = computed(() => dbStore.selectedSchema);
 const selectedTable = computed(() => dbStore.selectedTable);
 const tableData = computed(() => dbStore.tableData);
 
 const rowLimit = ref(100);
 
-const selectDatabase = async (database: string) => {
+const selectSchema = async (schema: string) => {
   try {
-    await dbStore.selectDatabase(database);
+    await dbStore.selectSchema(schema);
   } catch (error) {
     ElMessage.error('Failed to load tables: ' + (error instanceof Error ? error.message : String(error)));
   }
@@ -81,20 +82,20 @@ const disconnectDatabase = async () => {
 const connectToSaved = async (connection: any) => {
   try {
     connectingId.value = connection.id;
-    
+
     // If this is already the active connection, do nothing
     if (dbStore.activeConnectionId === connection.id) {
       return;
     }
-    
+
     // Use setActiveConnection if we already have this connection
-    const existingConnection = dbStore.connections.find(conn => 
-      conn.host === connection.host && 
-      conn.port === connection.port && 
+    const existingConnection = dbStore.connections.find(conn =>
+      conn.host === connection.host &&
+      conn.port === connection.port &&
       conn.username === connection.username &&
-      conn.database === connection.database
+      conn.schema === connection.schema
     );
-    
+
     if (existingConnection) {
       // If schema is specified, update it in the existing connection
       if (connection.schema) {
@@ -103,18 +104,17 @@ const connectToSaved = async (connection: any) => {
       await dbStore.setActiveConnection(existingConnection.id);
     } else {
       // Create a new connection if it doesn't exist
-      const connectionConfig = {
+      const connectionConfig = (connection: any) => ({
         name: connection.name,
         host: connection.host,
         port: connection.port,
         username: connection.username,
         password: connection.password,
-        database: connection.database,
         schema: connection.schema,
         jdbc_url: connection.jdbc_url
-      };
-      
-      await dbStore.addConnection(connectionConfig);
+      });
+
+      await dbStore.addConnection(connectionConfig(connection));
     }
   } catch (error) {
     ElMessage.error('Failed to connect: ' + (error instanceof Error ? error.message : String(error)));
@@ -155,21 +155,21 @@ const getSeqColWidth = () => {
 // Check if a column is likely to be variable length (text, varchar, etc.)
 const isVariableLength = (columnName: string) => {
   const lowerName = columnName.toLowerCase();
-  return lowerName.includes('content') || 
-         lowerName.includes('text') || 
-         lowerName.includes('desc') ||
-         lowerName.includes('comment') ||
-         lowerName.includes('detail');
+  return lowerName.includes('content') ||
+    lowerName.includes('text') ||
+    lowerName.includes('desc') ||
+    lowerName.includes('comment') ||
+    lowerName.includes('detail');
 };
 
 // Check if a column is likely to be a date/time field
 const isDateTimeField = (columnName: string) => {
   const lowerName = columnName.toLowerCase();
-  return lowerName.includes('time') || 
-         lowerName.includes('date') || 
-         lowerName.includes('create') ||
-         lowerName.includes('update') ||
-         lowerName.includes('modif');
+  return lowerName.includes('time') ||
+    lowerName.includes('date') ||
+    lowerName.includes('create') ||
+    lowerName.includes('update') ||
+    lowerName.includes('modif');
 };
 
 // Watch for changes in rowLimit and refresh data if needed
@@ -185,57 +185,37 @@ watch(rowLimit, async (newLimit, oldLimit) => {
     <div v-if="!activeConnection" class="no-connection">
       <div v-if="dbStore.connections.length > 0" class="saved-connections">
         <h3>Saved Connections</h3>
-        <el-card 
-          v-for="conn in dbStore.connections" 
-          :key="conn.id" 
-          class="connection-card"
-          :class="{ 'connection-card-active': isConnectionActive(conn.id) }"
-        >
+        <el-card v-for="conn in dbStore.connections" :key="conn.id" class="connection-card"
+          :class="{ 'connection-card-active': isConnectionActive(conn.id) }">
           <div class="connection-card-header">
             <div class="connection-title">
               <h4>{{ conn.name }}</h4>
-              <span 
-                class="status-badge"
-                :class="connectionStatusClass(getConnectionStatus(conn.id))"
-              >
+              <span class="status-badge" :class="connectionStatusClass(getConnectionStatus(conn.id))">
                 {{ connectionStatusText(getConnectionStatus(conn.id)) }}
               </span>
             </div>
             <div class="connection-details">
               <div class="connection-detail">
-                <el-icon><Connection /></el-icon>
-                <span>{{ conn.jdbc_url ? conn.jdbc_url : `${conn.host}:${conn.port}` }}</span>
-              </div>
-              <div v-if="conn.database" class="connection-detail">
-                <el-icon><Folder /></el-icon>
-                <span>{{ conn.database }}</span>
+                <el-icon>
+                  <Connection />
+                </el-icon>
+                <span>Database: {{ conn.jdbc_url ? conn.jdbc_url : `${conn.host}:${conn.port}` }}</span>
               </div>
               <div v-if="conn.schema" class="connection-detail">
-                <el-icon><FolderOpened /></el-icon>
-                <span>{{ conn.schema }}</span>
-              </div>
-              <div class="connection-detail">
-                <el-icon><User /></el-icon>
-                <span>{{ conn.username }}</span>
+                <el-icon>
+                  <Folder />
+                </el-icon>
+                <span>Schema: {{ conn.schema }}</span>
               </div>
             </div>
           </div>
           <div class="connection-card-actions">
-            <el-button 
-              type="primary" 
-              size="small" 
-              @click="connectToSaved(conn)" 
-              :loading="connectingId === conn.id"
-              :disabled="isConnectionActive(conn.id)"
-            >
+            <el-button type="primary" size="small" @click="connectToSaved(conn)" :loading="connectingId === conn.id"
+              :disabled="isConnectionActive(conn.id)">
               {{ isConnectionActive(conn.id) ? 'Connected' : 'Connect' }}
             </el-button>
-            <el-button 
-              type="danger" 
-              size="small" 
-              @click="removeSavedConnection(conn.id)"
-              :disabled="connectingId === conn.id"
-            >
+            <el-button type="danger" size="small" @click="removeSavedConnection(conn.id)"
+              :disabled="connectingId === conn.id">
               Remove
             </el-button>
           </div>
@@ -243,142 +223,82 @@ watch(rowLimit, async (newLimit, oldLimit) => {
       </div>
       <el-empty v-else description="No saved database connections" />
     </div>
-    
+
     <template v-else>
       <div class="explorer-header">
         <div class="connection-header">
           <h2 v-if="activeConnection">{{ activeConnection.name }}</h2>
           <span class="connection-status status-connected">
-            <el-icon><SuccessFilled /></el-icon>
+            <el-icon>
+              <SuccessFilled />
+            </el-icon>
             Connected
           </span>
         </div>
         <div class="connection-details-active" v-if="activeConnection">
           <div class="connection-detail">
-            <el-icon><Connection /></el-icon>
+            <el-icon>
+              <Connection />
+            </el-icon>
             <span>{{ activeConnection.jdbc_url || `${activeConnection.host}:${activeConnection.port}` }}</span>
           </div>
-          <div v-if="activeConnection.database" class="connection-detail">
-            <el-icon><Folder /></el-icon>
-            <span>{{ activeConnection.database }}</span>
-          </div>
-          <div v-if="activeConnection.schema" class="connection-detail">
-            <el-icon><FolderOpened /></el-icon>
-            <span>{{ activeConnection.schema }}</span>
-          </div>
-          <div class="connection-detail">
-            <el-icon><User /></el-icon>
-            <span>{{ activeConnection.username }}</span>
-          </div>
         </div>
-        <el-button 
-          v-if="activeConnection" 
-          type="danger" 
-          size="small" 
-          @click="disconnectDatabase"
-          :loading="isLoading"
-          plain
-        >
-          <el-icon><Connection /></el-icon>
+        <el-button v-if="activeConnection" type="danger" size="small" @click="disconnectDatabase" :loading="isLoading"
+          plain>
+          <el-icon>
+            <Connection />
+          </el-icon>
           <span>Disconnect</span>
         </el-button>
       </div>
-      
+
       <div class="explorer-content">
         <div class="sidebar">
           <div class="database-list">
-            <h3>Databases</h3>
-            <el-menu
-              :default-active="selectedDatabase || ''"
-              @select="selectDatabase"
-              class="database-menu"
-            >
-              <el-menu-item 
-                v-for="db in databases" 
-                :key="db" 
-                :index="db"
-              >
-                {{ db }}
+            <h3>Schemas</h3>
+            <el-menu :default-active="selectedSchema || ''" @select="selectSchema" class="database-menu">
+              <el-menu-item v-for="schema in schemas" :key="schema" :index="schema">
+                <span>{{ schema }}</span>
               </el-menu-item>
             </el-menu>
           </div>
-          
-          <div v-if="selectedDatabase" class="table-list">
-            <h3>Tables in {{ selectedDatabase }}</h3>
-            <el-menu
-              :default-active="selectedTable || ''"
-              @select="selectTable"
-              class="table-menu"
-            >
-              <el-menu-item 
-                v-for="table in tables" 
-                :key="table" 
-                :index="table"
-              >
+
+          <div v-if="selectedSchema" class="table-list">
+            <h3>Tables in {{ selectedSchema }}</h3>
+            <el-menu :default-active="selectedTable || ''" @select="selectTable" class="table-menu">
+              <el-menu-item v-for="table in tables" :key="table" :index="table">
                 {{ table }}
               </el-menu-item>
             </el-menu>
           </div>
         </div>
-        
+
         <div class="data-view">
           <template v-if="selectedTable && tableData">
             <div class="data-header">
               <h3>{{ selectedTable }}</h3>
               <div class="data-controls">
                 <span>Showing {{ tableData.rows.length }} rows</span>
-                <el-input-number 
-                  v-model="rowLimit" 
-                  :min="10" 
-                  :max="1000" 
-                  :step="10"
-                  size="small"
-                  @change="refreshTableData"
-                />
-                <el-button 
-                  type="primary" 
-                  size="small" 
-                  @click="refreshTableData"
-                  :loading="isLoading"
-                >
+                <el-input-number v-model="rowLimit" :min="10" :max="1000" :step="10" size="small"
+                  @change="refreshTableData" />
+                <el-button type="primary" size="small" @click="refreshTableData" :loading="isLoading">
                   Refresh
                 </el-button>
               </div>
             </div>
-            
-            <el-table 
-              :data="tableData.rows" 
-              border 
-              style="width: 100%"
-              max-height="600"
-              v-loading="isLoading"
-              size="small"
-              class="data-table"
-            >
-              <el-table-column
-                type="index"
-                label="#"
-                :width="getSeqColWidth()"
-                :min-width="getSeqColWidth()"
-                align="center"
-                fixed
-                class-name="sequence-column"
-              >
+
+            <el-table :data="tableData.rows" border style="width: 100%" max-height="600" v-loading="isLoading"
+              size="small" class="data-table">
+              <el-table-column type="index" label="#" :width="getSeqColWidth()" :min-width="getSeqColWidth()"
+                align="center" fixed class-name="sequence-column">
                 <template #default="scope">
                   {{ scope.$index + 1 }}
                 </template>
               </el-table-column>
-              <el-table-column 
-                v-for="column in tableData.columns" 
-                :key="column"
-                :prop="column"
-                :label="column"
+              <el-table-column v-for="column in tableData.columns" :key="column" :prop="column" :label="column"
                 :width="isVariableLength(column) ? '300px' : (isDateTimeField(column) ? '180px' : '120px')"
-                :min-width="isVariableLength(column) ? '300px' : (isDateTimeField(column) ? '160px' : '100px')"
-                sortable
-                show-overflow-tooltip
-                :class-name="isDateTimeField(column) ? 'datetime-column' : ''"
-              >
+                :min-width="isVariableLength(column) ? '300px' : (isDateTimeField(column) ? '160px' : '100px')" sortable
+                show-overflow-tooltip :class-name="isDateTimeField(column) ? 'datetime-column' : ''">
                 <template #header="{ column }">
                   <span :class="{
                     'variable-field': isVariableLength(column.property),
@@ -390,16 +310,10 @@ watch(rowLimit, async (newLimit, oldLimit) => {
               </el-table-column>
             </el-table>
           </template>
-          
-          <el-empty 
-            v-else-if="selectedDatabase" 
-            description="Select a table to view data"
-          />
-          
-          <el-empty 
-            v-else 
-            description="Select a database to view tables"
-          />
+
+          <el-empty v-else-if="selectedSchema" description="Select a table to view data" />
+
+          <el-empty v-else description="Select a schema to view tables" />
         </div>
       </div>
     </template>
@@ -498,6 +412,7 @@ watch(rowLimit, async (newLimit, oldLimit) => {
   color: #606266;
   font-weight: 500;
 }
+
 .database-explorer {
   height: 100%;
   display: flex;
@@ -528,9 +443,11 @@ watch(rowLimit, async (newLimit, oldLimit) => {
 
 .saved-connections {
   margin-bottom: 20px;
-  max-height: calc(100vh - 200px); /* Adjust based on your layout */
+  max-height: calc(100vh - 200px);
+  /* Adjust based on your layout */
   overflow-y: auto;
-  padding-right: 8px; /* Add some padding for scrollbar */
+  padding-right: 8px;
+  /* Add some padding for scrollbar */
   display: flex;
   flex-direction: column;
   gap: 15px;
@@ -567,7 +484,8 @@ watch(rowLimit, async (newLimit, oldLimit) => {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
-  flex-shrink: 0; /* Prevent cards from shrinking */
+  flex-shrink: 0;
+  /* Prevent cards from shrinking */
 }
 
 .connection-card-active {
@@ -611,7 +529,7 @@ watch(rowLimit, async (newLimit, oldLimit) => {
   justify-content: flex-end;
   gap: 8px;
   padding: 8px 12px;
-  background-color: #f8f9fa;
+  background-color: #e6fbf7;
   border-top: 1px solid #f0f0f0;
 }
 
@@ -703,6 +621,7 @@ watch(rowLimit, async (newLimit, oldLimit) => {
 :deep(.el-menu-item:hover) {
   background-color: #f5f7fa;
 }
+
 .data-view {
   flex: 1;
   padding: 10px;

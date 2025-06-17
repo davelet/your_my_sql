@@ -1,38 +1,16 @@
 import { defineStore } from 'pinia';
 import { invoke } from '@tauri-apps/api/core';
 import { v4 as uuidv4 } from 'uuid';
-
-export interface ConnectionConfig {
-  id: string;
-  name: string;
-  host: string;
-  port: number;
-  username: string;
-  password: string;
-  database?: string;
-  schema?: string;
-  jdbc_url?: string;
-}
-
-interface QueryResult {
-  columns: string[];
-  rows: Record<string, any>[];
-  affected_rows: number;
-}
-
-interface CommandResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
+import { ElMessage } from 'element-plus';
+import type { ConnectionConfig, QueryResult, CommandResponse, AppConfig, WindowState } from './db.types';
 
 export const useDbStore = defineStore('db', {
   state: () => ({
     connections: [] as ConnectionConfig[],
     activeConnectionId: null as string | null,
-    databases: [] as string[],
+    schemas: [] as string[],
     tables: [] as string[],
-    selectedDatabase: null as string | null,
+    selectedSchema: null as string | null,
     selectedTable: null as string | null,
     tableData: null as QueryResult | null,
     queryResult: null as QueryResult | null,
@@ -40,39 +18,54 @@ export const useDbStore = defineStore('db', {
     error: null as string | null,
     initialized: false,
   }),
-
   actions: {
     async initialize() {
       if (this.initialized) return;
       
       try {
-        const response = await invoke<CommandResponse<any>>('get_app_config');
+        const response = await invoke<CommandResponse<AppConfig>>('get_app_config');
         
-        if (response.success && response.data && response.data.saved_connections) {
-          // Store connections in memory but don't connect to them
-          this.connections = response.data.saved_connections;
-          // Don't set any connection as active on startup
+        if (response.success && response.data) {
+          if (response.data.saved_connections) {
+            this.connections = response.data.saved_connections;
+          }
           this.activeConnectionId = null;
+        } else {
+          this.error = response.error || 'Failed to initialize: could not get app config';
+          console.error('Initialization failed:', this.error);
         }
         
         this.initialized = true;
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
+        console.error('Error during initialization:', this.error);
       }
     },
     
-    async saveConnectionsToConfig() {
+    async saveConnectionsToConfig(): Promise<boolean> {
       try {
-        const response = await invoke<CommandResponse<any>>('get_app_config');
+        const getConfigResponse = await invoke<CommandResponse<AppConfig>>('get_app_config');
         
-        if (response.success && response.data) {
-          const config = response.data;
-          config.saved_connections = this.connections;
+        if (getConfigResponse.success && getConfigResponse.data) {
+          const config = getConfigResponse.data;
+          config.saved_connections = [...this.connections]; // Use spread for new array
           
-          await invoke<CommandResponse<void>>('save_app_config', { config });
+          const saveConfigResponse = await invoke<CommandResponse<void>>('save_app_config', { config });
+          if (!saveConfigResponse.success) {
+            this.error = saveConfigResponse.error || 'Failed to save app config (unknown error)';
+            console.error("Failed to save app config:", this.error);
+            return false;
+          }
+          return true;
+        } else {
+          this.error = getConfigResponse.error || 'Failed to get app config during save (unknown error)';
+          console.error("Failed to get app config during save:", this.error);
+          return false;
         }
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
+        console.error("Error in saveConnectionsToConfig:", this.error);
+        return false;
       }
     },
     async addConnection(config: Omit<ConnectionConfig, 'id'>, closeExisting = true) {
@@ -99,31 +92,41 @@ export const useDbStore = defineStore('db', {
         };
         
         // Connect to the database
-        const connectionId = await invoke<string>('connect_to_database', { 
+        const updatedConfig = await invoke<ConnectionConfig>('connect_to_database', { 
           config: {
             ...connectionConfig,
             schema: connectionConfig.schema || null
           } 
         });
+        updatedConfig.name = config.name;
         
         // Add to connections list if not already present
-        if (!this.connections.some(conn => conn.id === connectionConfig.id)) {
-          this.connections.push(connectionConfig);
-          await this.saveConnectionsToConfig();
+        if (!this.connections.some(conn => conn.id === updatedConfig.id)) {
+          // Use the updated config returned from the backend
+          // This will have the parsed host, port, and schema if a JDBC URL was used
+          // and the jdbc_url field will be removed
+          this.connections.push(updatedConfig);
+          const savedSuccessfully = await this.saveConnectionsToConfig();
+          if (!savedSuccessfully) {
+            // Error is already set in dbStore.error by saveConnectionsToConfig
+            ElMessage.error(`Connection successful, but failed to save configuration: ${this.error}`);
+            // Optionally, you might want to revert adding the connection if saving is critical
+            // For now, we'll leave it in memory but flag the save error.
+          }
         }
         
         // Set as active and load databases
-        this.activeConnectionId = connectionConfig.id;
+        this.activeConnectionId = updatedConfig.id;
         
         // If a schema is specified, select it after loading databases
-        if (connectionConfig.schema) {
-          await this.loadDatabases();
-          await this.selectDatabase(connectionConfig.schema);
+        if (updatedConfig.schema) {
+          await this.loadSchemas();
+          await this.selectSchema(updatedConfig.schema);
         } else {
-          await this.loadDatabases();
+          await this.loadSchemas();
         }
         
-        return connectionId;
+        return updatedConfig.id;
         
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
@@ -133,7 +136,7 @@ export const useDbStore = defineStore('db', {
       }
     },
     
-    async loadDatabases() {
+    async loadSchemas() {
       if (!this.activeConnectionId) return;
       
       this.isLoading = true;
@@ -145,9 +148,9 @@ export const useDbStore = defineStore('db', {
         });
         
         if (response.success && response.data) {
-          this.databases = response.data;
+          this.schemas = response.data;
         } else {
-          this.error = response.error || 'Failed to load databases';
+          this.error = response.error || 'Failed to load schemas';
         }
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
@@ -156,19 +159,19 @@ export const useDbStore = defineStore('db', {
       }
     },
     
-    async selectDatabase(database: string) {
+    async selectSchema(schema: string) {
       if (!this.activeConnectionId) return;
       
       this.isLoading = true;
       this.error = null;
-      this.selectedDatabase = database;
+      this.selectedSchema = schema;
       this.selectedTable = null;
       this.tableData = null;
       
       try {
         const response = await invoke<CommandResponse<string[]>>('list_tables', { 
           connId: this.activeConnectionId,
-          database
+          schema
         });
         
         if (response.success && response.data) {
@@ -184,7 +187,7 @@ export const useDbStore = defineStore('db', {
     },
     
     async selectTable(table: string, limit: number = 100) {
-      if (!this.activeConnectionId || !this.selectedDatabase) return;
+      if (!this.activeConnectionId || !this.selectedSchema) return;
       
       this.isLoading = true;
       this.error = null;
@@ -193,7 +196,7 @@ export const useDbStore = defineStore('db', {
       try {
         const response = await invoke<CommandResponse<QueryResult>>('get_table_data', { 
           connId: this.activeConnectionId,
-          database: this.selectedDatabase,
+          schema: this.selectedSchema,
           table,
           limit
         });
@@ -249,9 +252,9 @@ export const useDbStore = defineStore('db', {
         // Clear active connection state
         if (this.activeConnectionId === connId) {
           this.activeConnectionId = null;
-          this.databases = [];
+          this.schemas = [];
           this.tables = [];
-          this.selectedDatabase = null;
+          this.selectedSchema = null;
           this.selectedTable = null;
           this.tableData = null;
         }
@@ -280,20 +283,20 @@ export const useDbStore = defineStore('db', {
           } 
         });
         
-        // Then update the active connection and load databases
+        // Then update the active connection and load schemas
         this.activeConnectionId = connectionId;
-        this.databases = [];
+        this.schemas = [];
         this.tables = [];
-        this.selectedDatabase = null;
+        this.selectedSchema = null;
         this.selectedTable = null;
         this.tableData = null;
         
-        // If a schema is specified, select it after loading databases
+        // If a schema is specified, select it after loading schemas
         if (connection.schema) {
-          await this.loadDatabases();
-          await this.selectDatabase(connection.schema);
+          await this.loadSchemas();
+          await this.selectSchema(connection.schema);
         } else {
-          await this.loadDatabases();
+          await this.loadSchemas();
         }
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
@@ -317,9 +320,9 @@ export const useDbStore = defineStore('db', {
         
         // Reset all connection state
         this.activeConnectionId = null;
-        this.databases = [];
+        this.schemas = [];
         this.tables = [];
-        this.selectedDatabase = null;
+        this.selectedSchema = null;
         this.selectedTable = null;
         this.tableData = null;
         this.queryResult = null;

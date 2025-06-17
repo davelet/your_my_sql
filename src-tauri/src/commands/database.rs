@@ -4,10 +4,10 @@ use you_my_sql_db::{CONNECTION_MANAGER, ConnectionConfig, QueryResult};
 use super::CommandResponse;
 
 #[tauri::command]
-pub async fn connect_to_database(config: ConnectionConfig) -> Result<String, String> {
+pub async fn connect_to_database(config: ConnectionConfig) -> Result<ConnectionConfig, String> {
     let mut manager = CONNECTION_MANAGER.lock().map_err(|e| format!("Failed to acquire lock: {}", e))?;
 
-    manager.create_connection(config.clone()).map(|_| config.id).map_err(|e| e.to_string())
+    manager.create_connection(config).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -37,26 +37,26 @@ pub async fn list_databases(conn_id: String) -> CommandResponse<Vec<String>> {
 }
 
 #[tauri::command]
-pub async fn list_tables(conn_id: String, database: String) -> CommandResponse<Vec<String>> {
+pub async fn list_tables(conn_id: String, schema: String) -> CommandResponse<Vec<String>> {
     let manager = match CONNECTION_MANAGER.lock() {
         Ok(manager) => manager,
         Err(e) => return CommandResponse::error(format!("Failed to acquire lock: {}", e)),
     };
 
-    match manager.list_tables(&conn_id, &database) {
+    match manager.list_tables(&conn_id, &schema) {
         Ok(tables) => CommandResponse::success(tables),
         Err(e) => CommandResponse::error(e),
     }
 }
 
 #[tauri::command]
-pub async fn get_table_data(conn_id: String, database: String, table: String, limit: usize) -> CommandResponse<QueryResult> {
+pub async fn get_table_data(conn_id: String, schema: String, table: String, limit: usize) -> CommandResponse<QueryResult> {
     let manager = match CONNECTION_MANAGER.lock() {
         Ok(manager) => manager,
         Err(e) => return CommandResponse::error(format!("Failed to acquire lock: {}", e)),
     };
 
-    match manager.get_table_data(&conn_id, &database, &table, limit) {
+    match manager.get_table_data(&conn_id, &schema, &table, limit) {
         Ok(result) => CommandResponse::success(result),
         Err(e) => CommandResponse::error(e),
     }

@@ -11,7 +11,6 @@ const formData = reactive({
   port: 3306,
   username: 'root',
   password: '',
-  database: '',
   schema: '',
   jdbc_url: '',
   connection_type: 'standard' // 'standard' or 'jdbc'
@@ -66,8 +65,8 @@ const connect = async () => {
         port: formData.port,
         username: formData.username,
         password: formData.password,
-        database: formData.database || undefined,
-        schema: formData.schema || undefined
+        schema: formData.schema || undefined,
+        jdbc_url: formData.jdbc_url
       };
       
       // Add JDBC URL if using that connection type
@@ -75,7 +74,6 @@ const connect = async () => {
         (connectionConfig as any).jdbc_url = formData.jdbc_url;
       }
       
-      console.log('Attempting to add connection with config:', connectionConfig);
       const connectionId = await dbStore.addConnection(connectionConfig);
       console.log('Connection ID received:', connectionId);
       
@@ -83,6 +81,8 @@ const connect = async () => {
         ElMessage.success('Connected successfully');
         emit('connected', connectionId);
         resetForm();
+        
+        // If using JDBC URL, the connection info has been parsed and saved without the JDBC URL
       } else if (dbStore.error) {
         ElMessage.error(dbStore.error);
       }
@@ -102,7 +102,7 @@ const resetForm = () => {
   formData.port = 3306;
   formData.username = 'root';
   formData.password = '';
-  formData.database = '';
+  formData.schema = '';
   formData.jdbc_url = 'jdbc:mysql://localhost:3306/table?autoReconnect=true';
   // useJdbcUrl.value = false;
 };
@@ -152,9 +152,7 @@ watch(useJdbcUrl, (newValue) => {
         <el-input-number v-model="formData.port" :min="1" :max="65535" />
       </el-form-item>
       
-      <el-form-item label="Database" prop="database">
-        <el-input v-model="formData.database" placeholder="Optional" />
-      </el-form-item>
+      
       <el-form-item label="Schema" prop="schema">
         <el-input v-model="formData.schema" placeholder="Optional" />
       </el-form-item>
