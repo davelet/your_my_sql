@@ -1,9 +1,16 @@
 [package]
 name = "you_my_sql"
-version = "0.1.0"
+version = "0.1.1"
 description = "You are my SQL"
-authors = ["davelet"]
+authors = ["davelet <sheldon.sh.hb@gmail.com>"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/davelet/you_my_sql"
+homepage = "https://github.com/davelet/you_my_sql"
+documentation = "https://github.com/davelet/you_my_sql#readme"
+keywords = ["sql", "database", "tauri", "vue", "client"]
+categories = ["database", "gui", "tauri"]
+readme = "../../README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
