@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { ElMessage } from 'element-plus';
 import { Codemirror } from 'vue-codemirror';
 import { sql } from '@codemirror/lang-sql';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { formatSqlQuery } from '../utils/sqlUtils';
+import { copyToClipboard } from '../utils/clipboardUtils';
 
 const DEFAULT_SQL_QUERY = 'SELECT * FROM ';
 
@@ -19,38 +20,11 @@ const handleReset = () => {
 const extensions = [sql(), oneDark];
 
 const formatQuery = () => {
-  // Simple SQL formatting - in a real app, you might use a library for this
-  const formatted = sqlQuery.value
-    .replace(/\s+/g, ' ')
-    .replace(/\s*,\s*/g, ', ')
-    .replace(/\s*=\s*/g, ' = ')
-    .replace(/\s*>\s*/g, ' > ')
-    .replace(/\s*<\s*/g, ' < ')
-    .replace(/\s*\(\s*/g, ' (')
-    .replace(/\s*\)\s*/g, ') ')
-    .replace(/\s*;\s*/g, ';')
-    .replace(/SELECT/gi, 'SELECT')
-    .replace(/FROM/gi, '\nFROM')
-    .replace(/WHERE/gi, '\nWHERE')
-    .replace(/ORDER BY/gi, '\nORDER BY')
-    .replace(/GROUP BY/gi, '\nGROUP BY')
-    .replace(/HAVING/gi, '\nHAVING')
-    .replace(/LIMIT/gi, '\nLIMIT')
-    .replace(/JOIN/gi, '\nJOIN')
-    .replace(/UNION/gi, '\nUNION')
-    .trim();
-    
-  sqlQuery.value = formatted;
+  sqlQuery.value = formatSqlQuery(sqlQuery.value);
 };
 
 const copyQuery = () => {
-  navigator.clipboard.writeText(sqlQuery.value)
-    .then(() => {
-      ElMessage.success('SQL query copied to clipboard');
-    })
-    .catch(err => {
-      ElMessage.error('Failed to copy: ' + err);
-    });
+  copyToClipboard(sqlQuery.value, 'SQL query copied to clipboard', 'Failed to copy');
 };
 
 </script>
@@ -141,11 +115,4 @@ const copyQuery = () => {
   height: 100%;
 }
 
-.query-results {
-  flex: 1;
-  padding: 10px;
-  overflow: auto;
-  border-top: 1px solid #eee;
-  margin-top: 10px;
-}
 </style>

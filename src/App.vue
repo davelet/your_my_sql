@@ -9,7 +9,7 @@ import ConfigSettings from './components/ConfigSettings.vue';
 const dbStore = useDbStore();
 const activeTab = ref('explorer');
 const showConnectionDialog = ref(false);
-const viewMode = ref('both'); // 'both', 'tables', or 'query'
+const viewMode = ref('query'); // 'tables' or 'query'
 
 onMounted(async () => {
   // Initialize the database store and load saved connections
@@ -19,11 +19,6 @@ onMounted(async () => {
 const handleConnected = () => {
   showConnectionDialog.value = false;
 };
-
-// This function is not needed since we're using v-model directly with viewMode
-// const toggleViewMode = (mode: string) => {
-//   viewMode.value = mode;
-// };
 </script>
 
 <template>
