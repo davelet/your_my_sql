@@ -3,12 +3,13 @@ import { ref, onMounted } from 'vue';
 import { useDbStore } from './stores/db';
 import ConnectionForm from './components/ConnectionForm.vue';
 import DatabaseExplorer from './components/DatabaseExplorer.vue';
-import SqlEditor from './components/SqlEditor.vue';
+import SqlTool from './components/SqlTool.vue';
 import ConfigSettings from './components/ConfigSettings.vue';
 
 const dbStore = useDbStore();
 const activeTab = ref('explorer');
 const showConnectionDialog = ref(false);
+const viewMode = ref('both'); // 'both', 'tables', or 'query'
 
 onMounted(async () => {
   // Initialize the database store and load saved connections
@@ -18,6 +19,11 @@ onMounted(async () => {
 const handleConnected = () => {
   showConnectionDialog.value = false;
 };
+
+// This function is not needed since we're using v-model directly with viewMode
+// const toggleViewMode = (mode: string) => {
+//   viewMode.value = mode;
+// };
 </script>
 
 <template>
@@ -34,11 +40,11 @@ const handleConnected = () => {
     <main class="app-content">
       <el-tabs v-model="activeTab" class="main-tabs">
         <el-tab-pane label="Database Explorer" name="explorer">
-          <DatabaseExplorer />
+          <DatabaseExplorer :view-mode="viewMode" @update:view-mode="viewMode = $event" />
         </el-tab-pane>
         
-        <el-tab-pane label="SQL Editor" name="editor">
-          <SqlEditor />
+        <el-tab-pane label="SQL Tool" name="tool">
+          <SqlTool />
         </el-tab-pane>
 
         <el-tab-pane label="Settings" name="settings">
@@ -131,11 +137,26 @@ body {
   flex: 1;
   overflow: hidden;
   padding: 0;
-  height: calc(100% - 40px);
+  display: flex;
+  flex-direction: column;
 }
 
 .main-tabs :deep(.el-tab-pane) {
-  height: 100%;
+  flex: 1;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.view-mode-controls {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0;
+  background-color: #f5f7fa;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+div#pane-tool.el-tab-pane {
+  height: 100%;
 }
 </style>

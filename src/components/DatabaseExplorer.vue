@@ -1,8 +1,30 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { useDbStore } from '../stores/db';
-import type { ConnectionConfig } from '../stores/db.types';
+import type { ConnectionConfig, QueryResult } from '../stores/db.types';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { Codemirror } from 'vue-codemirror';
+import { sql } from '@codemirror/lang-sql';
+import { oneDark } from '@codemirror/theme-one-dark';
+
+// Define props
+const props = defineProps({
+  viewMode: {
+    type: String,
+    default: 'both', // 'both', 'tables', or 'query'
+  }
+});
+
+// Define emits
+const emit = defineEmits(['update:view-mode']);
+
+// Create a local viewMode ref that syncs with the prop
+const viewMode = computed({
+  get: () => props.viewMode,
+  set: (value) => emit('update:view-mode', value)
+});
+
+// Update view mode function is no longer needed with the computed property approach
 
 const dbStore = useDbStore();
 
@@ -178,6 +200,90 @@ watch(rowLimit, async (newLimit, oldLimit) => {
     await refreshTableData();
   }
 });
+
+// Quick SQL Query functionality
+const quickSqlQuery = ref('');
+const quickQueryResult = ref<QueryResult | null>(null);
+const sqlExtensions = [sql(), oneDark];
+
+const executeQuickQuery = async () => {
+  if (!activeConnection.value) {
+    ElMessage.warning('Please connect to a database first');
+    return;
+  }
+  
+  if (!quickSqlQuery.value.trim()) {
+    ElMessage.warning('Please enter a SQL query');
+    return;
+  }
+  
+  try {
+    const result = await dbStore.executeQuery(quickSqlQuery.value);
+    if (result) {
+      quickQueryResult.value = result;
+    } else if (dbStore.error) {
+      ElMessage.error(dbStore.error);
+    }
+  } catch (error) {
+    ElMessage.error('Failed to execute query: ' + (error instanceof Error ? error.message : String(error)));
+  }
+};
+
+const formatQuickQuery = () => {
+  // Simple SQL formatting - in a real app, you might use a library for this
+  const formatted = quickSqlQuery.value
+    .replace(/\s+/g, ' ')
+    .replace(/\s*,\s*/g, ', ')
+    .replace(/\s*=\s*/g, ' = ')
+    .replace(/\s*>\s*/g, ' > ')
+    .replace(/\s*<\s*/g, ' < ')
+    .replace(/\s*\(\s*/g, ' (')
+    .replace(/\s*\)\s*/g, ') ')
+    .replace(/\s*;\s*/g, ';')
+    .replace(/SELECT/gi, 'SELECT')
+    .replace(/FROM/gi, '\nFROM')
+    .replace(/WHERE/gi, '\nWHERE')
+    .replace(/ORDER BY/gi, '\nORDER BY')
+    .replace(/GROUP BY/gi, '\nGROUP BY')
+    .replace(/HAVING/gi, '\nHAVING')
+    .replace(/LIMIT/gi, '\nLIMIT')
+    .replace(/JOIN/gi, '\nJOIN')
+    .replace(/UNION/gi, '\nUNION')
+    .trim();
+    
+  quickSqlQuery.value = formatted;
+};
+
+const copyQuickQuery = () => {
+  navigator.clipboard.writeText(quickSqlQuery.value)
+    .then(() => {
+      ElMessage.success('SQL query copied to clipboard');
+    })
+    .catch(err => {
+      ElMessage.error('Failed to copy: ' + err);
+    });
+};
+
+const getQuickQueryResultText = () => {
+  if (!quickQueryResult.value) return '';
+  
+  if (quickQueryResult.value.affected_rows > 0) {
+    return `${quickQueryResult.value.affected_rows} row${quickQueryResult.value.affected_rows > 1 ? 's' : ''} affected`;
+  }
+  
+  return quickQueryResult.value.rows.length > 0 
+    ? `${quickQueryResult.value.rows.length} row${quickQueryResult.value.rows.length > 1 ? 's' : ''} returned` 
+    : 'Query executed successfully';
+};
+
+// Initialize quick SQL query with a SELECT statement for the selected table when a table is selected
+watch(selectedTable, (newTable) => {
+  if (newTable && selectedSchema.value) {
+    quickSqlQuery.value = `SELECT * FROM ${selectedSchema.value}.${newTable} LIMIT 100;`;
+    // Reset previous query result
+    quickQueryResult.value = null;
+  }
+});
 </script>
 
 <template>
@@ -277,6 +383,13 @@ watch(rowLimit, async (newLimit, oldLimit) => {
           <template v-if="selectedTable && tableData">
             <div class="data-header">
               <h3>{{ selectedTable }}</h3>
+              <div class="view-mode-controls">
+                <el-radio-group v-model="viewMode" size="small">
+                  <el-radio-button label="both">Both</el-radio-button>
+                  <el-radio-button label="tables">Tables Only</el-radio-button>
+                  <el-radio-button label="query">Query Only</el-radio-button>
+                </el-radio-group>
+              </div>
               <div class="data-controls">
                 <span>Showing {{ tableData.rows.length }} rows</span>
                 <el-input-number v-model="rowLimit" :min="10" :max="1000" :step="10" size="small"
@@ -287,28 +400,97 @@ watch(rowLimit, async (newLimit, oldLimit) => {
               </div>
             </div>
 
-            <el-table :data="tableData.rows" border style="width: 100%" max-height="600" v-loading="isLoading"
-              size="small" class="data-table">
-              <el-table-column type="index" label="#" :width="getSeqColWidth()" :min-width="getSeqColWidth()"
-                align="center" fixed class-name="sequence-column">
-                <template #default="scope">
-                  {{ scope.$index + 1 }}
-                </template>
-              </el-table-column>
-              <el-table-column v-for="column in tableData.columns" :key="column" :prop="column" :label="column"
-                :width="isVariableLength(column) ? '300px' : (isDateTimeField(column) ? '180px' : '120px')"
-                :min-width="isVariableLength(column) ? '300px' : (isDateTimeField(column) ? '160px' : '100px')" sortable
-                show-overflow-tooltip :class-name="isDateTimeField(column) ? 'datetime-column' : ''">
-                <template #header="{ column }">
-                  <span :class="{
-                    'variable-field': isVariableLength(column.property),
-                    'datetime-field': isDateTimeField(column.property)
-                  }">
-                    {{ column.label }}
-                  </span>
-                </template>
-              </el-table-column>
-            </el-table>
+            <!-- Table Data Section - Show when viewMode is 'both' or 'tables' -->
+            <div v-if="viewMode === 'both' || viewMode === 'tables'" class="table-data-section">
+              <el-table :data="tableData.rows" border style="width: 100%" max-height="600" v-loading="isLoading"
+                size="small" class="data-table">
+                <el-table-column type="index" label="#" :width="getSeqColWidth()" :min-width="getSeqColWidth()"
+                  align="center" fixed class-name="sequence-column">
+                  <template #default="scope">
+                    {{ scope.$index + 1 }}
+                  </template>
+                </el-table-column>
+                <el-table-column v-for="column in tableData.columns" :key="column" :prop="column" :label="column"
+                  :width="isVariableLength(column) ? '300px' : (isDateTimeField(column) ? '180px' : '120px')"
+                  :min-width="isVariableLength(column) ? '300px' : (isDateTimeField(column) ? '160px' : '100px')" sortable
+                  show-overflow-tooltip :class-name="isDateTimeField(column) ? 'datetime-column' : ''">
+                  <template #header="{ column }">
+                    <span :class="{
+                      'variable-field': isVariableLength(column.property),
+                      'datetime-field': isDateTimeField(column.property)
+                    }">
+                      {{ column.label }}
+                    </span>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+            
+            <!-- SQL Query Section - Show when viewMode is 'both' or 'query' -->
+            <div v-if="viewMode === 'both' || viewMode === 'query'" class="sql-query-section">
+              <div class="sql-query-header">
+                <h3>Quick SQL Query</h3>
+                <div class="sql-query-controls">
+                  <el-button 
+                    type="primary" 
+                    size="small"
+                    @click="executeQuickQuery"
+                    :loading="isLoading"
+                  >
+                    Execute
+                  </el-button>
+                  <el-button size="small" @click="formatQuickQuery">Format</el-button>
+                  <el-button size="small" @click="copyQuickQuery">Copy</el-button>
+                </div>
+              </div>
+              
+              <div class="sql-query-editor">
+                <Codemirror
+                  v-model="quickSqlQuery"
+                  placeholder="Enter your SQL query here..."
+                  :indent-with-tab="true"
+                  :tabSize="2"
+                  :extensions="sqlExtensions"
+                  class="resizable-editor"
+                />
+              </div>
+              
+              <div v-if="quickQueryResult" class="quick-query-results">
+                <div class="results-header">
+                  <h3>Results</h3>
+                  <span class="affected-rows">{{ getQuickQueryResultText() }}</span>
+                </div>
+                
+                <el-table 
+                  v-if="quickQueryResult.columns.length > 0 && quickQueryResult.rows.length > 0"
+                  :data="quickQueryResult.rows" 
+                  border 
+                  style="width: 100%"
+                  max-height="300"
+                  size="small"
+                >
+                  <el-table-column 
+                    v-for="column in quickQueryResult.columns" 
+                    :key="column"
+                    :prop="column"
+                    :label="column"
+                    sortable
+                  />
+                </el-table>
+                
+                <div v-else-if="quickQueryResult.affected_rows > 0" class="no-results">
+                  <el-result 
+                    icon="success"
+                    :title="`${quickQueryResult.affected_rows} row${quickQueryResult.affected_rows > 1 ? 's' : ''} affected`"
+                    sub-title="Query executed successfully"
+                  />
+                </div>
+                
+                <div v-else class="no-results">
+                  <el-empty description="No results returned" />
+                </div>
+              </div>
+            </div>
           </template>
 
           <el-empty v-else-if="selectedSchema" description="Select a table to view data" />
@@ -626,13 +808,28 @@ watch(rowLimit, async (newLimit, oldLimit) => {
   flex: 1;
   padding: 10px;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .data-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.data-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.view-mode-controls {
+  margin-left: 15px;
+  margin-right: auto;
 }
 
 .data-controls {
@@ -646,5 +843,111 @@ watch(rowLimit, async (newLimit, oldLimit) => {
   justify-content: center;
   align-items: center;
   height: 100%;
+}
+
+/* SQL Query Section Styles */
+.sql-query-section {
+  margin-top: 20px;
+  border-top: 1px solid #eee;
+  padding-top: 20px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0; /* Important for flex child to respect parent's height */
+  height: calc(100vh - 350px); /* Viewport height minus header, tabs, and table section */
+}
+
+.sql-query-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  height: 40px;
+  min-height: 40px;
+}
+
+.sql-query-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.sql-query-editor {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 15px;
+  position: relative;
+  flex: 1;
+  min-height: 0; /* Important for flex child to respect parent's height */
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 400px); /* Viewport height minus all other elements */
+}
+
+.resizable-editor {
+  height: 100% !important;
+  min-height: calc(100vh - 350px); /* Subtract header, table section, and padding */
+  overflow: auto;
+  flex: 1;
+}
+
+:deep(.resizable-editor .cm-editor) {
+  height: 100%;
+  overflow: auto;
+}
+
+:deep(.resizable-editor .cm-scroller) {
+  overflow: auto;
+}
+
+.quick-query-results {
+  margin-top: 15px;
+}
+
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.affected-rows {
+  font-size: 14px;
+  color: #666;
+}
+
+/* Adjust heights based on view mode */
+.data-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: auto;
+}
+
+.table-data-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* Important for flex child to respect parent's height */
+  overflow: auto;
+  margin-bottom: 20px;
+}
+
+.data-table {
+  flex: 1;
+}
+
+/* When only tables are shown, give them more space */
+.data-view:has(.table-data-section:only-child) .table-data-section {
+  max-height: none;
+}
+
+/* When only query is shown, give it more space */
+.data-view:has(.sql-query-section:only-child) .sql-query-editor :deep(.cm-editor) {
+  height: 300px !important;
+}
+
+.data-view:has(.sql-query-section:only-child) .quick-query-results :deep(.el-table) {
+  max-height: 500px !important;
 }
 </style>
