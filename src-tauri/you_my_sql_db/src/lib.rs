@@ -37,6 +37,8 @@ pub struct ConnectionConfig {
     pub password: String,
     pub schema: Option<String>,
     pub jdbc_url: Option<String>,
+    pub create_time: Option<i64>,
+    pub touch_time: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

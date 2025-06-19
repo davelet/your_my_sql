@@ -7,6 +7,8 @@ export interface ConnectionConfig {
   password: string;
   schema?: string;
   jdbc_url?: string;
+  create_time?: number;
+  touch_time?: number;
 }
 
 export interface QueryResult {

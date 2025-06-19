@@ -3,11 +3,18 @@
 use you_my_sql_db::{CONNECTION_MANAGER, ConnectionConfig, QueryResult};
 use super::CommandResponse;
 
+use chrono::Utc;
+
 #[tauri::command]
-pub async fn connect_to_database(config: ConnectionConfig) -> Result<ConnectionConfig, String> {
+pub async fn connect_to_database(mut config: ConnectionConfig) -> Result<ConnectionConfig, String> {
     let mut manager = CONNECTION_MANAGER.lock().map_err(|e| format!("Failed to acquire lock: {}", e))?;
 
-    manager.create_connection(config).map_err(|e| e.to_string())
+    config.touch_time = Some(Utc::now().timestamp_millis());
+    if config.create_time.is_none() {
+        config.create_time = Some(Utc::now().timestamp_millis());
+    }
+    manager.create_connection(config.clone()).map_err(|e| e.to_string())?; // Clone config for create_connection
+    Ok(config) // Return the modified config
 }
 
 #[tauri::command]

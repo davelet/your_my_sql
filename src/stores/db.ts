@@ -27,7 +27,7 @@ export const useDbStore = defineStore('db', {
         
         if (response.success && response.data) {
           if (response.data.saved_connections) {
-            this.connections = response.data.saved_connections;
+            this.connections = response.data.saved_connections.sort((a, b) => (a.create_time || 0) - (b.create_time || 0));
           }
           this.activeConnectionId = null;
         } else {
@@ -93,7 +93,9 @@ export const useDbStore = defineStore('db', {
           ...config,
           id: uuidv4(),
           port: Number(config.port) || 3306,
-          schema: config.schema || undefined
+          schema: config.schema || undefined,
+          create_time: Date.now(),
+          touch_time: Date.now()
         };
         
         // Connect to the database
@@ -225,9 +227,23 @@ export const useDbStore = defineStore('db', {
       this.error = null;
       
       try {
+        // Get the app config to retrieve max_rows_display
+        const configResponse = await invoke<CommandResponse<AppConfig>>('get_app_config');
+        let maxRowsDisplay = 100; // Default value
+        
+        if (configResponse.success && configResponse.data) {
+          maxRowsDisplay = configResponse.data.max_rows_display;
+        }
+        
+        // Import the addLimitToQuery function
+        const { addLimitToQuery } = await import('../utils/sqlUtils');
+        
+        // Add LIMIT clause if not present
+        const queryWithLimit = addLimitToQuery(query, maxRowsDisplay);
+        
         const response = await invoke<CommandResponse<QueryResult>>('execute_query', { 
           connId: this.activeConnectionId,
-          query
+          query: queryWithLimit
         });
         
         if (response.success && response.data) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { useDbStore } from '../stores/db';
 import type { ConnectionConfig, QueryResult } from '../stores/db.types';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -258,8 +258,10 @@ watch(selectedTable, (newTable) => {
 
     viewMode.value = 'tables';
   } else if (selectedSchema.value) {
-
     quickSqlQuery.value = `SELECT * FROM information_schema.tables WHERE table_schema = '${selectedSchema.value}' LIMIT 100;`;
+    
+    // When no table is selected, automatically switch to query mode
+    viewMode.value = 'query';
   }
   // Reset previous query result
   quickQueryResult.value = null;
@@ -275,6 +277,58 @@ watch(selectedSchema, (newSchema) => {
     // Reset previous query result
     quickQueryResult.value = null;
   }
+});
+
+// Add scroll synchronization for table headers
+onMounted(() => {
+  // Handle scroll event
+  const handleScroll = function(this: HTMLElement) {
+    const headerWrapper = this.parentElement?.querySelector('.el-table__header-wrapper') as HTMLElement;
+    if (headerWrapper) {
+      headerWrapper.scrollLeft = this.scrollLeft;
+    }
+  };
+  
+  const syncHeaderScroll = () => {
+    const tables = document.querySelectorAll('.el-table__body-wrapper');
+    tables.forEach(bodyWrapper => {
+      // Remove existing event listener first to prevent duplicates
+      bodyWrapper.removeEventListener('scroll', handleScroll);
+      // Add new event listener
+      bodyWrapper.addEventListener('scroll', handleScroll);
+    });
+  };
+  
+  // Run initially
+  nextTick(syncHeaderScroll);
+  
+  // Watch for changes in table data and reapply scroll synchronization
+  watch([() => tableData.value, () => quickQueryResult.value], () => {
+    nextTick(syncHeaderScroll);
+  });
+  
+  // Use MutationObserver to detect DOM changes in tables
+  const observer = new MutationObserver(() => {
+    syncHeaderScroll();
+  });
+  
+  // Start observing after initial render
+  nextTick(() => {
+    const tableContainers = document.querySelectorAll('.table-data-section, .quick-query-results');
+    tableContainers.forEach(container => {
+      observer.observe(container, { 
+        childList: true, 
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['style', 'class']
+      });
+    });
+  });
+  
+  // Apply scroll sync when switching between tabs or view modes
+  watch(() => viewMode.value, () => {
+    nextTick(syncHeaderScroll);
+  });
 });
 </script>
 
@@ -371,14 +425,14 @@ watch(selectedSchema, (newSchema) => {
         </div>
 
         <div class="data-view">
-          <!-- 表格数据部分 - 仅在选择了表格且 viewMode 为 'tables' 时显示 -->
+          <!-- Table data section - Only displayed when a table is selected and viewMode is 'tables' -->
           <template v-if="selectedTable && tableData && viewMode === 'tables'">
             <div class="data-header">
               <h3>{{ selectedTable }}</h3>
               <div class="view-mode-controls">
                 <el-radio-group v-model="viewMode" size="small">
-                  <el-radio-button label="tables">Tables Only</el-radio-button>
-                  <el-radio-button label="query">Query Only</el-radio-button>
+                  <el-radio-button label="tables">Table Data</el-radio-button>
+                  <el-radio-button label="query">SQL Query</el-radio-button>
                 </el-radio-group>
               </div>
               <div class="data-controls">
@@ -394,7 +448,7 @@ watch(selectedSchema, (newSchema) => {
             <!-- Table Data Section - Show when viewMode is 'tables' -->
             <div class="table-data-section">
               <el-table :data="tableData.rows" border style="width: 100%" max-height="600" v-loading="isLoading"
-                size="small" class="data-table">
+                size="small" class="data-table" :header-cell-style="{backgroundColor: '#f8f9fa'}" header-row-class-name="table-header-row">
                 <el-table-column type="index" label="#" :width="getSeqColWidth()" :min-width="getSeqColWidth()"
                   align="center" fixed class-name="sequence-column">
                   <template #default="scope">
@@ -418,8 +472,8 @@ watch(selectedSchema, (newSchema) => {
             </div>
           </template>
 
-          <!-- SQL 查询部分 - 只在 Query Only 模式下显示 -->
-          <div v-if="viewMode === 'query'" class="sql-query-section">
+          <!-- SQL 查询部分 - 在 Query Only 模式下或没有选择表时显示 -->
+          <div v-if="viewMode === 'query' || !selectedTable" class="sql-query-section">
             <div class="sql-query-header">
               <h3>Quick SQL Query</h3>
               <div class="view-mode-controls" v-if="selectedTable && tableData">
@@ -449,7 +503,8 @@ watch(selectedSchema, (newSchema) => {
               </div>
 
               <el-table v-if="quickQueryResult.columns.length > 0 && quickQueryResult.rows.length > 0"
-                :data="quickQueryResult.rows" border style="width: 100%" max-height="300" size="small">
+                :data="quickQueryResult.rows" border style="width: 100%" max-height="300" size="small"
+                :header-cell-style="{backgroundColor: '#f8f9fa'}" header-row-class-name="table-header-row">
                 <el-table-column v-for="column in quickQueryResult.columns" :key="column" :prop="column" :label="column"
                   sortable />
               </el-table>
@@ -927,6 +982,7 @@ watch(selectedSchema, (newSchema) => {
   min-height: 0;
   overflow: hidden;
   margin-bottom: 20px;
+  position: relative;
 }
 
 .data-table {
@@ -944,7 +1000,53 @@ watch(selectedSchema, (newSchema) => {
 }
 
 :deep(.el-table .el-table__header-wrapper) {
-  overflow: visible;
+  overflow: hidden;
+}
+
+/* Fix for horizontal scrolling alignment */
+:deep(.el-table--scrollable-x .el-table__body-wrapper) {
+  overflow-x: auto !important;
+}
+
+:deep(.el-table--scrollable-x .el-table__header-wrapper) {
+  overflow-x: hidden !important;
+}
+
+/* This is the key fix for header alignment during horizontal scroll */
+:deep(.el-table__body-wrapper) {
+  scrollbar-width: thin;
+}
+
+:deep(.el-table__body-wrapper::-webkit-scrollbar) {
+  height: 8px;
+}
+
+:deep(.el-table__body-wrapper::-webkit-scrollbar-thumb) {
+  background-color: #c0c4cc;
+  border-radius: 4px;
+}
+
+/* Force the header to match body scroll position */
+:deep(.el-table__header-wrapper table),
+:deep(.el-table__body-wrapper table) {
+  width: 100% !important;
+}
+
+/* Improve scroll synchronization */
+:deep(.el-table__body-wrapper) {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+  scroll-behavior: smooth;
+}
+
+:deep(.el-table__header-wrapper) {
+  overflow-x: hidden !important;
+  scroll-behavior: smooth;
+}
+
+/* Table header row styling */
+:deep(.table-header-row) {
+  background-color: #f8f9fa;
 }
 
 :deep(.el-table) {
